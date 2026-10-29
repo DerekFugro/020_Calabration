@@ -1,0 +1,4 @@
+name: ikea_road
+type: dots
+layout_csv: ikea_road.csv
+label: ""

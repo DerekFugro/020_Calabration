@@ -1,0 +1,23 @@
+# ============================================================================
+# *** SUPERSEDED 2026-08-11 — NOT GROUND TRUTH ANY MORE ***
+#
+# The board was re-measured and the cells are SQUARE at 3.000" (76.2 mm).
+# Calibrating with square cells gives fx/fy = 0.9998; the non-square values
+# below gave 0.994.  The live values are in src/board.py.
+#
+# This file is kept for history only. Do not copy these numbers into the app.
+# ============================================================================
+
+# --- SUPERSEDED: derived from an overall 36.125" x 23.9375" board measurement
+CELL_WIDTH_IN = 36.125 / 12  # Result: 3.0104
+CELL_HEIGHT_IN = 23.9375 / 8  # Result: 2.9922
+
+# Convert to MM for OpenCV (1 inch = 25.4 mm)
+CELL_WIDTH_MM = CELL_WIDTH_IN * 25.4
+CELL_HEIGHT_MM = CELL_HEIGHT_IN * 25.4
+
+# When you define your chessboard object points:
+# Instead of assuming square size 76.2mm, use your specific dimensions
+# If you are using cv2.calibrateCamera, you usually provide a single 
+# square size. To be extremely precise, you would define your 
+# object points manually using these two variables.

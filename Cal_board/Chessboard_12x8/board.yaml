@@ -1,0 +1,7 @@
+name: Chessboard 12x8
+type: chessboard
+squares_x: 12
+squares_y: 8
+cell_width_mm: 76.39     # measured with calipers 2026-08-18 (references/BoardTrueSize.md)
+cell_height_mm: 76.39
+# Print files and the generate_*.py scripts that make them are in this folder.

@@ -1,0 +1,47 @@
+Questions for IA_SoftwareSpecs
+Below are the questions used to generate the Instruction.md file.
+Questions marked with - are required. A NA response means Not Applicable.
+Question
+
+Project name:
+Purpose: (One-sentence):
+Problem it solves: (for whom, in what situation):
+MVP definition: (must-have features, 3–7 bullets):
+Success criteria: (measurable if possible):
+Explicit non-goals / out of scope: (Stop feature creep):
+Primary user(s)/persona(s): (non-technical / mixed / technical):
+Top user stories: (Story and Acceptance criteria 3-5):
+App type: (web / mobile / CLI / API / GUI desktop / embedded / other):
+GUI layout approach: (Qt Designer / pure code / hybrid — skip if not GUI):
+Dynamic widgets needed: (list widgets generated at runtime e.g. cards, rows — skip if not GUI):
+Key screens/endpoints/commands: (bullets):
+Roles/permissions: (if any):
+Data to store: (entities) + any key rules:
+Integrations: (if any):
+Target OS and hardware: (Windows, Mac, Phone, RaspberryPi, Arduino, GPU):
+Preferred tech stack: (or "agent recommends"): (Software, environment, database):
+Preferences and Tradeoffs: (Speed, Security, keep simple, clean architecture):
+Automated tests: (yes/no — framework preference if yes):
+Reference Material: (links or files):
+
+Rules
+If GUI: use dark mode
+If GUI: enforce GUI_Coding_Standards.md (Questions/GUI_Coding_Standards.md)
+
+Every QWidget subclass must use the 5-method init pattern
+Every widget must have a named instance variable
+No business logic in create* methods
+Dynamic widgets use factory + populate + clear pattern
+Ask if anything is unclear before starting
+Write a plan grouped into phases before writing any code
+List all software and extensions with versions for each phase
+Between phases: run full test suite, report results, wait for "proceed"
+Do not advance to next phase if any tests fail
+If software cannot be installed or version conflict found: stop and report before continuing
+
+First tasks when coding begins
+Read GUI_Coding_Standards.md if this is a GUI project
+Read and list all required software and extensions with versions
+Verify version compatibility via web search
+Create the environment and install all dependencies
+Report setup complete with version summary and wait for "proceed"
