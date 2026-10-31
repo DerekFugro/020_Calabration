@@ -197,6 +197,54 @@ def _tr(
     pdf.ln()
 
 
+def _ascii(text: str) -> str:
+    """Core PDF fonts are Latin-1 only."""
+    return (text.replace("\u2014", "-").replace("\u00b0", " deg")
+                .replace("\u00b7", "|").replace("\u2265", ">="))
+
+
+def _coverage_grid_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:
+    """3x3 coloured grid of how well each part of the image is calibrated."""
+    from src.coverage import GOOD, POOR, WEAK, compute_grid, limits_text
+
+    _section(pdf, "Image Coverage (3 x 3)")
+    try:
+        grid = compute_grid(cal_result)
+    except Exception as exc:  # noqa: BLE001 — never block the report
+        _kv(pdf, "Not available:", _ascii(str(exc)))
+        return
+    fills = {GOOD: (200, 230, 201), WEAK: (255, 224, 178), POOR: (255, 205, 210)}
+    cw, ch = 50.0, 17.0
+    if pdf.get_y() + 3 * ch + 30 > pdf.h - pdf.b_margin:
+        pdf.add_page()
+    x0, y0 = pdf.l_margin, pdf.get_y()
+    for row in grid.cells:
+        for cell in row:
+            x, y = x0 + cell.col * cw, y0 + cell.row * ch
+            pdf.set_fill_color(*fills[cell.status])
+            pdf.rect(x, y, cw, ch, style="DF")
+            err = "-" if cell.points == 0 else f"{cell.rms_px:.2f} px"
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_xy(x, y + 1.5)
+            pdf.cell(cw, 4.5, f"{cell.name}  ({cell.status})", align="C")
+            pdf.set_font("Helvetica", size=8)
+            pdf.set_xy(x, y + 6.5)
+            pdf.cell(cw, 4.5, f"{cell.points} points | {err}", align="C")
+            pdf.set_xy(x, y + 11)
+            pdf.cell(cw, 4.5, f"angles {cell.tilt_spread_deg:.0f} deg", align="C")
+    pdf.set_xy(x0, y0 + 3 * ch + 2)
+    pdf.set_font("Helvetica", size=7)
+    pdf.multi_cell(_CW, 3.6, _ascii(limits_text()), new_x="LMARGIN", new_y="NEXT")
+    advice = grid.advice()
+    pdf.set_font("Helvetica", size=8)
+    pdf.ln(1)
+    if advice:
+        for line in advice:
+            pdf.multi_cell(_CW, 4.2, _ascii("- " + line), new_x="LMARGIN", new_y="NEXT")
+    else:
+        pdf.multi_cell(_CW, 4.2, "All 9 areas are green.", new_x="LMARGIN", new_y="NEXT")
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  PDF writer
 # ══════════════════════════════════════════════════════════════════════════════
@@ -281,6 +329,9 @@ def write_pdf(
     cw = _CW / max(n, 1)
     _th(pdf, coeff_labels, [cw] * n)
     _tr(pdf, [f"{v:.6f}" for v in dist_flat], [cw] * n)
+
+    # ── 3x3 image coverage ────────────────────────────────────────────────
+    _coverage_grid_pdf(pdf, cal_result)
 
     # ── Board parameters ──────────────────────────────────────────────────
     _section(pdf, "Board Parameters")

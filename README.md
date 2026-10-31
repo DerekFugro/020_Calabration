@@ -33,6 +33,14 @@ into the profiler pipeline.
   fy 2066.68, RMS 1.067 px, the same as the filed 20261008_PaveIntrinsic.
 - Backup of the code before this change: `_backup_20261029_before_boards/`.
 
+## Image coverage grid (added 2026-10-31)
+
+The report screen and the PDF show a 3 × 3 grid over the camera image.  Each
+area shows how many board points landed there, the reprojection error of those
+points, and how much the board angle varied there.  Green / yellow / red, with
+the area's colour set by its worst measure, plus a line of advice for every
+non-green area.  Limits are at the top of `src/coverage.py`.
+
 > **Detection note** — the printed board is a ChArUco board (DICT\_5X5\_50
 > markers in the white squares), but this app does **not** use the ArUco
 > module.  `src/detector.py` treats the board as a plain chessboard and calls

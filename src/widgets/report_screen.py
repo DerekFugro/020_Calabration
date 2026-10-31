@@ -23,11 +23,22 @@ from PySide6.QtWidgets import (
 
 from src.board import BoardConfig
 from src.calibrator import CalibrationResult
+from src.coverage import GOOD, POOR, WEAK, compute_grid, limits_text
 from src.quality import QualityReport
 from src.styles import (
     BUTTON_H, MARGIN, SPACING,
     VERDICT_COLOURS, C_TEXT_DIM,
+    C_AMBER, C_AMBER_BG, C_GREEN, C_GREEN_BG, C_RED, C_RED_BG,
 )
+
+# 3x3 coverage grid colours: (text/border, background) per status
+_GRID_COLOURS = {
+    GOOD: (C_GREEN, C_GREEN_BG),
+    WEAK: (C_AMBER, C_AMBER_BG),
+    POOR: (C_RED,   C_RED_BG),
+}
+_GRID_CELL_W = 180
+_GRID_CELL_H = 74
 
 # ── Layout constants ─────────────────────────────────────────────────────────
 _BADGE_H      = 44
@@ -91,6 +102,16 @@ class ReportScreen(QWidget):
         self.focus_key_label      = QLabel("Focus Quality:")
         self.focus_val_label      = QLabel("—")
 
+        # ── 3x3 image coverage section ─────────────────────────────────────
+        self.grid_section_label = QLabel("Image Coverage (3 × 3)")
+        self.grid_frame         = QFrame()
+        self.grid_cells = [[QLabel("—") for _ in range(3)] for _ in range(3)]
+        self.grid_legend        = QLabel(limits_text())
+        self.grid_legend.setWordWrap(True)
+        self.grid_advice        = QLabel("")
+        self.grid_advice.setWordWrap(True)
+        self.grid_advice.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
         # ── Camera matrix section ──────────────────────────────────────────
         self.matrix_section_label = QLabel("Camera Matrix")
         self.matrix_frame         = QFrame()
@@ -143,6 +164,18 @@ class ReportScreen(QWidget):
 
     # ── Layout ────────────────────────────────────────────────────────────────
     def _create_layouts(self) -> None:
+        # 3x3 coverage grid
+        self.cov_grid = QGridLayout(self.grid_frame)
+        self.cov_grid.setSpacing(4)
+        self.cov_grid.setContentsMargins(0, 0, 0, 0)
+        for r in range(3):
+            for c in range(3):
+                lbl = self.grid_cells[r][c]
+                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                lbl.setFixedSize(_GRID_CELL_W, _GRID_CELL_H)
+                self.cov_grid.addWidget(lbl, r, c)
+        self.cov_grid.setColumnStretch(3, 1)
+
         # Camera matrix inner grid
         self.matrix_grid = QGridLayout(self.matrix_frame)
         self.matrix_grid.setSpacing(2)
@@ -192,6 +225,10 @@ class ReportScreen(QWidget):
         self.scroll_main_layout.setSpacing(SPACING * 2)
         self.scroll_main_layout.addLayout(self.summary_layout)
         self.scroll_main_layout.addWidget(self.outlier_group)
+        self.scroll_main_layout.addWidget(self.grid_section_label)
+        self.scroll_main_layout.addWidget(self.grid_frame)
+        self.scroll_main_layout.addWidget(self.grid_legend)
+        self.scroll_main_layout.addWidget(self.grid_advice)
         self.scroll_main_layout.addWidget(self.matrix_section_label)
         self.scroll_main_layout.addWidget(self.matrix_frame)
         self.scroll_main_layout.addWidget(self.dist_section_label)
@@ -249,7 +286,7 @@ class ReportScreen(QWidget):
         dim = f"rgb({C_TEXT_DIM[0]},{C_TEXT_DIM[1]},{C_TEXT_DIM[2]})"
         for lbl in (
             self.matrix_section_label, self.dist_section_label,
-            self.board_section_label,
+            self.board_section_label, self.grid_section_label,
         ):
             lbl.setStyleSheet(
                 f"font-size: 9pt; font-weight: bold; color: {dim};"
@@ -261,6 +298,8 @@ class ReportScreen(QWidget):
             "QGroupBox::title { subcontrol-origin: margin; left: 8px; }"
         )
         self.outlier_label.setStyleSheet("color: rgb(229,115,115); font-size: 9pt;")
+        self.grid_legend.setStyleSheet(f"font-size: 8pt; color: {dim};")
+        self.grid_advice.setStyleSheet("font-size: 9pt;")
         for lbl in (
             self.rms_key_label, self.images_key_label, self.focal_key_label,
             self.principal_key_label, self.resolution_key_label, self.focus_key_label,
@@ -292,7 +331,44 @@ class ReportScreen(QWidget):
         self._update_dist(cal_result.dist_coeffs)
         self._update_board(board_config)
         self._update_outliers(cal_result)
+        self._update_grid(cal_result)
         self.save_button.setEnabled(True)
+
+    def _update_grid(self, cal_result: CalibrationResult) -> None:
+        """Fill the 3x3 coverage grid (src/coverage.py)."""
+        try:
+            grid = compute_grid(cal_result)
+        except Exception as exc:  # noqa: BLE001 — never block the report
+            for row in self.grid_cells:
+                for lbl in row:
+                    lbl.setText("—")
+                    lbl.setStyleSheet("")
+            self.grid_advice.setText(f"Coverage grid not available: {exc}")
+            return
+        for row in grid.cells:
+            for cell in row:
+                lbl = self.grid_cells[cell.row][cell.col]
+                fg, bg = _GRID_COLOURS[cell.status]
+                err = "—" if cell.points == 0 else f"{cell.rms_px:.2f} px"
+                lbl.setText(
+                    f"<b>{cell.name}</b><br>"
+                    f"{cell.points} points · {err}<br>"
+                    f"angles {cell.tilt_spread_deg:.0f}°"
+                )
+                lbl.setToolTip("\n".join(cell.problems()) or "Good")
+                lbl.setStyleSheet(
+                    f"background: rgb({bg[0]},{bg[1]},{bg[2]});"
+                    f"border: 1px solid rgb({fg[0]},{fg[1]},{fg[2]});"
+                    "border-radius: 4px; font-size: 9pt;"
+                )
+        advice = grid.advice()
+        if advice:
+            self.grid_advice.setText(
+                f"{grid.count(POOR)} red, {grid.count(WEAK)} yellow, "
+                f"{grid.count(GOOD)} green.<br>" + "<br>".join(advice)
+            )
+        else:
+            self.grid_advice.setText("All 9 areas are green.")
 
     def _update_verdict(self, quality: QualityReport) -> None:
         text_rgb, bg_rgb = VERDICT_COLOURS.get(

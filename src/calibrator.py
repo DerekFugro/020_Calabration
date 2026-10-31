@@ -38,6 +38,9 @@ class CalibrationResult:
     image_size: tuple[int, int]  # (width, height) of calibration images
     per_image_errors: list = field(default_factory=list)  # (image_path, rms_px) sorted worst-first
     point_count_used: int = 0    # total board points (corners or dots) used
+    # Per used image, same order as rvecs/tvecs: (image_path, object_pts (N,3),
+    # image_pts (N,2)).  Feeds the 3x3 coverage grid (src/coverage.py).
+    points_used: list = field(default_factory=list)
 
 
 def _refine_dot_matches(detections, filter_results, board_config, image_size,
@@ -203,4 +206,9 @@ def calibrate(
         image_size=image_size,
         per_image_errors=per_image_errors,
         point_count_used=int(sum(len(p) for p in object_points)),
+        points_used=[
+            (path, np.asarray(o, np.float64).reshape(-1, 3),
+             np.asarray(i, np.float64).reshape(-1, 2))
+            for path, o, i in zip(accepted_paths, object_points, image_points)
+        ],
     )
