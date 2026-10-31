@@ -280,12 +280,19 @@ class MainWindow(QMainWindow):
                 self._role,
                 self._serial,
                 dt,
-                passed=self._quality.pass_verdict if self._quality else None,
+                passed=self._publish_passed(),
             ), ""
         except StoreError as exc:
             return None, str(exc)
         except OSError as exc:  # noqa: BLE001 — drive offline, permissions, …
             return None, f"Could not write to the store: {exc}"
+
+    def _publish_passed(self) -> bool | None:
+        """The grade decides when there is one (src/grading.py); else the RMS verdict."""
+        g = getattr(self._cal_result, "grade", None)
+        if g is not None:
+            return bool(g.passed)
+        return self._quality.pass_verdict if self._quality else None
 
     # ── New calibration ───────────────────────────────────────────────────────
     def _on_new_calibration_requested(self) -> None:

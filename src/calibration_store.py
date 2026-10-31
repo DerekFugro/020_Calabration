@@ -166,6 +166,21 @@ def check_publishable(yaml_path: str | Path, passed: bool | None = None) -> str:
     tail = ("Not published — the local CAL_ files were still written to the "
             "image folder.")
 
+    # Files written since 2026-10-31 carry a grade (src/grading.py: coverage,
+    # repeatability, sanity, RMS < 2 px).  When present it decides: the RMS
+    # verdict alone did not predict real-world error on surveyed targets.
+    grade = data.get("grade")
+    if isinstance(grade, dict) and "passed" in grade:
+        if not grade.get("passed"):
+            why = "; ".join(str(x) for x in (grade.get("hard_stops") or []) + (grade.get("reasons") or []))
+            raise StoreError(
+                f"The calibration did not pass its grade: {grade.get('headline', '')} "
+                f"{why} {tail}".strip()
+            )
+        if passed is False:
+            raise StoreError(f"The run did not pass its grade. {tail}")
+        return verdict or "PASS"
+
     if not verdict:
         raise StoreError(
             f"The calibration file records no verdict, so it cannot be shown "

@@ -77,6 +77,14 @@ class ReportScreen(QWidget):
         self.verdict_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.verdict_badge.setFixedHeight(_BADGE_H)
 
+        # Grade banner (src/grading.py): pass/fail + what to shoot next
+        self.grade_banner  = QLabel("")
+        self.grade_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.grade_banner.setWordWrap(True)
+        self.grade_details = QLabel("")
+        self.grade_details.setWordWrap(True)
+        self.grade_details.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
         # Scroll area for the results body
         self.scroll_area    = QScrollArea()
         self.scroll_content = QWidget()
@@ -223,6 +231,7 @@ class ReportScreen(QWidget):
         self.scroll_main_layout = QVBoxLayout(self.scroll_content)
         self.scroll_main_layout.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
         self.scroll_main_layout.setSpacing(SPACING * 2)
+        self.scroll_main_layout.addWidget(self.grade_details)
         self.scroll_main_layout.addLayout(self.summary_layout)
         self.scroll_main_layout.addWidget(self.outlier_group)
         self.scroll_main_layout.addWidget(self.grid_section_label)
@@ -250,6 +259,7 @@ class ReportScreen(QWidget):
         self.main_layout.setSpacing(SPACING)
         self.main_layout.addWidget(self.title_label)
         self.main_layout.addWidget(self.verdict_badge)
+        self.main_layout.addWidget(self.grade_banner)
         self.main_layout.addWidget(self.scroll_area, stretch=1)
         self.main_layout.addLayout(self.button_layout)
 
@@ -332,7 +342,40 @@ class ReportScreen(QWidget):
         self._update_board(board_config)
         self._update_outliers(cal_result)
         self._update_grid(cal_result)
+        self._update_grade(cal_result)
         self.save_button.setEnabled(True)
+
+    def _update_grade(self, cal_result: CalibrationResult) -> None:
+        """Show the grade: PASS, or what to shoot next."""
+        import html
+        g = getattr(cal_result, "grade", None)
+        if g is None:
+            self.grade_banner.hide(); self.grade_details.hide()
+            return
+        fg, bg = (C_GREEN, C_GREEN_BG) if g.passed else (C_RED, C_RED_BG)
+        self.grade_banner.setText(g.headline)
+        self.grade_banner.setStyleSheet(
+            f"font-size: 12pt; font-weight: bold; padding: 6px; border-radius: 4px;"
+            f"color: rgb({fg[0]},{fg[1]},{fg[2]}); background: rgb({bg[0]},{bg[1]},{bg[2]});"
+        )
+        parts = []
+        rp = g.repeatability
+        if rp is not None:
+            parts.append(f"<b>Repeatability:</b> about {rp.at_10m_mm:.0f} mm at 10 m "
+                         f"({rp.est_error_p95_mrad:.2f} mrad). Limit 10 mm.")
+        parts += [f"<b>STOP:</b> {html.escape(s)}" for s in g.hard_stops]
+        parts += [f"&bull; {html.escape(r)}" for r in g.reasons]
+        if g.coaching:
+            parts.append("<b>What to do:</b>")
+            parts += [f"&nbsp;&nbsp;&rarr; {html.escape(c)}" for c in g.coaching]
+        if g.worst_images:
+            parts.append("<b>Worst photos:</b> " + ", ".join(
+                f"{html.escape(Path(p).name)} ({e:.1f} px)" for p, e in g.worst_images))
+        if not g.passed:
+            parts.append("<i>Saving still writes the local files; publishing to the store "
+                         "needs a PASS.</i>")
+        self.grade_details.setText("<br>".join(parts))
+        self.grade_banner.show(); self.grade_details.show()
 
     def _update_grid(self, cal_result: CalibrationResult) -> None:
         """Fill the 3x3 coverage grid (src/coverage.py)."""

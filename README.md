@@ -33,6 +33,17 @@ into the profiler pipeline.
   fy 2066.68, RMS 1.067 px, the same as the filed 20261008_PaveIntrinsic.
 - Backup of the code before this change: `_backup_20261029_before_boards/`.
 
+## Grade: pass, or what to shoot next (added 2026-10-31)
+
+Every calibration is graded (`src/grading.py`). PASS needs all of:
+
+- no hard stop (NaN, placeholder values such as an exact image-centre principal point with zero distortion, implausible focal length);
+- repeatability: first and second half of the photos calibrated separately agree within 1 mrad (10 mm at 10 m) after removing a common camera rotation;
+- every 3 x 3 area has enough points and board tilt;
+- 15 or more usable photos and RMS under 2 px.
+
+Otherwise the report says NOT GOOD ENOUGH and lists, per area, how many more photos to take and how, plus the worst photos to remove. A failed grade still saves the local files but is not published to the store. Command line: `python cli.py <folder>` prints the grade; `python cli.py --grade-all <root> --csv grades.csv --workers 8` grades every image folder under a root. Dot boards no longer use the blur filter (it rejected sharp dot photos).
+
 ## Image coverage grid (added 2026-10-31)
 
 The report screen and the PDF show a 3 × 3 grid over the camera image.  Each

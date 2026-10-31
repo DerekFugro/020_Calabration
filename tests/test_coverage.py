@@ -11,7 +11,7 @@ from src.calibrator import CalibrationResult
 from src.coverage import GOOD, POOR, WEAK, compute_grid, limits_text
 
 W, H = 1500, 900
-K = np.array([[1000.0, 0, 750], [0, 1000.0, 450], [0, 0, 1]])
+K = np.array([[1000.0, 0, 762], [0, 1000.0, 447], [0, 0, 1]])   # not the exact centre: that is the placeholder pattern
 D = np.zeros((1, 5))
 
 

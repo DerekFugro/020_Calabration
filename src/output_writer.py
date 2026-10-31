@@ -129,6 +129,21 @@ def write_yaml(
         "detection_method": "chessboard",
     }
 
+    g = getattr(cal_result, "grade", None)
+    if g is not None:
+        rp = g.repeatability
+        payload["grade"] = {
+            "passed":   bool(g.passed),
+            "headline": g.headline,
+            "hard_stops": list(g.hard_stops),
+            "reasons":  list(g.reasons),
+            "repeatability_p95_mrad": None if rp is None else round(rp.est_error_p95_mrad, 3),
+            "repeatability_at_10m_mm": None if rp is None else round(rp.at_10m_mm, 1),
+            "more_photos_needed": int(g.more_photos),
+            "rules": "src/grading.py 2026-10-31: no hard stop, repeatability <= 1 mrad, "
+                     "all 3x3 areas with enough points and tilt, RMS < 2 px",
+        }
+
     if board_config.is_dots:
         # Random-dot board: same block shape as the 2026-10-08 AranSW1 files.
         payload["board"] = {
@@ -201,6 +216,39 @@ def _ascii(text: str) -> str:
     """Core PDF fonts are Latin-1 only."""
     return (text.replace("\u2014", "-").replace("\u00b0", " deg")
                 .replace("\u00b7", "|").replace("\u2265", ">="))
+
+
+def _grade_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:
+    """Grade banner: pass/fail, reasons, what to shoot next (src/grading.py)."""
+    g = getattr(cal_result, "grade", None)
+    if g is None:
+        return
+    _section(pdf, "Grade")
+    pdf.set_font("Helvetica", "B", 11)
+    if g.passed:
+        pdf.set_text_color(27, 94, 32)
+    else:
+        pdf.set_text_color(183, 28, 28)
+    pdf.multi_cell(_CW, 6, _ascii(g.headline), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", size=8)
+    rp = g.repeatability
+    if rp is not None:
+        pdf.multi_cell(_CW, 4.2, _ascii(f"Repeatability: about {rp.at_10m_mm:.0f} mm at 10 m "
+                                        f"({rp.est_error_p95_mrad:.2f} mrad, 95% of the image)."),
+                       new_x="LMARGIN", new_y="NEXT")
+    for s in g.hard_stops:
+        pdf.multi_cell(_CW, 4.2, _ascii("STOP: " + s), new_x="LMARGIN", new_y="NEXT")
+    for r in g.reasons:
+        pdf.multi_cell(_CW, 4.2, _ascii("- " + r), new_x="LMARGIN", new_y="NEXT")
+    if g.coaching:
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.cell(_CW, 4.5, "What to do:", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", size=8)
+        for c in g.coaching:
+            pdf.multi_cell(_CW, 4.2, _ascii("* " + c), new_x="LMARGIN", new_y="NEXT")
+    for p, e in g.worst_images:
+        pdf.multi_cell(_CW, 4.2, _ascii(f"  worst photo: {Path(p).name}  {e:.2f} px"), new_x="LMARGIN", new_y="NEXT")
 
 
 def _coverage_grid_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:
@@ -299,6 +347,8 @@ def write_pdf(
     cam = cal_result.camera_matrix
     fx, fy = cam[0, 0], cam[1, 1]
     cx, cy = cam[0, 2], cam[1, 2]
+
+    _grade_pdf(pdf, cal_result)
 
     _section(pdf, "Calibration Summary")
     _kv(pdf, "RMS Reprojection Error:", f"{cal_result.rms:.4f} px")

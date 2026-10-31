@@ -92,9 +92,12 @@ class DetectionWorker(QThread):
             )
             self.progress.emit("Applying image filters…")
             if self._board_config.is_dots:
+                # No blur filter for dot boards: the Laplacian blur score is
+                # 5-15 even on sharp dot photos (few edges), so the chessboard
+                # limit of 20 threw out good sets.  Blurry dot photos show up
+                # as high per-photo error instead (grading lists them).
                 filter_results = filter_detections(
-                    detections, min_corners=MIN_DOTS_PER_IMAGE,
-                    min_blur=self._min_blur,
+                    detections, min_corners=MIN_DOTS_PER_IMAGE, min_blur=0.0,
                 )
             else:
                 filter_results = filter_detections(detections, min_blur=self._min_blur)
@@ -135,6 +138,9 @@ class CalibrationWorker(QThread):
             )
             self.progress.emit("Evaluating calibration quality…")
             quality = evaluate(cal_result)
+            self.progress.emit("Grading: coverage and repeatability…")
+            from src.grading import grade
+            cal_result.grade = grade(cal_result)
             self.progress.emit(
                 f"Calibration complete — RMS {cal_result.rms:.4f} px  "
                 f"({quality.verdict})"

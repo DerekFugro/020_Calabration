@@ -41,6 +41,7 @@ class CalibrationResult:
     # Per used image, same order as rvecs/tvecs: (image_path, object_pts (N,3),
     # image_pts (N,2)).  Feeds the 3x3 coverage grid (src/coverage.py).
     points_used: list = field(default_factory=list)
+    grade: object = None         # src.grading.GradeReport, set by the worker
 
 
 def _refine_dot_matches(detections, filter_results, board_config, image_size,
