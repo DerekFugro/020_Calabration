@@ -71,3 +71,33 @@ def test_store_gate_uses_grade(tmp_path):
     old = _yaml(tmp_path, {"verdict": "Needs Improvement"})                 # no grade: old rule
     with pytest.raises(StoreError):
         check_publishable(old)
+
+
+def test_any_red_area_is_not_a_pass(monkeypatch):
+    """Derek 2026-11-01: no red squares in the 3x3 grid for a pass."""
+    from types import SimpleNamespace
+    import numpy as np
+    import src.grading as gr
+    from src.coverage import GOOD, POOR, GridCell, GridReport
+
+    def grid(red):
+        cells = [[GridCell(r, c, points=500, images=40, rms_px=0.4, tilt_spread_deg=40,
+                           points_status=GOOD, error_status=GOOD, tilt_status=GOOD, status=GOOD)
+                  for c in range(3)] for r in range(3)]
+        if red:
+            cells[2][0].rms_px, cells[2][0].error_status, cells[2][0].status = 1.17, POOR, POOR
+        return GridReport(cells=cells, image_size=(1920, 1080))
+
+    cal = SimpleNamespace(image_size=(1920, 1080), rms=0.8, image_count_used=200,
+                          camera_matrix=np.array([[1665.0, 0, 944], [0, 1665, 520], [0, 0, 1]]),
+                          dist_coeffs=np.zeros((1, 5)), per_image_errors=[("a", 0.8)] * 5,
+                          points_used=[], photo_blur_px=[], auto_removed=[])
+    rep_ok = SimpleNamespace(est_error_p95_mrad=0.5, at_10m_mm=5.0)
+    monkeypatch.setattr(gr, "repeatability", lambda c: rep_ok)
+    monkeypatch.setattr(gr, "sanity_problems", lambda *a, **k: [])
+    monkeypatch.setattr(gr, "compute_grid", lambda c: grid(False))
+    assert gr.grade(cal).passed
+    monkeypatch.setattr(gr, "compute_grid", lambda c: grid(True))
+    g = gr.grade(cal)
+    assert not g.passed and any("Bottom-left" in r and "red" in r for r in g.reasons)
+    assert any("Bottom-left: error 1.17" in c for c in g.coaching)

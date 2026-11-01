@@ -8,7 +8,8 @@ Rules agreed with Derek on 2026-10-31.  A calibration PASSES when all hold:
      by the extrinsic/boresight), half their 95th-percentile disagreement is
      the estimated error.  Must be <= REPEAT_MAX_MRAD (1 mrad = 10 mm at 10 m).
   3. Coverage: every 3x3 area has enough points and enough board tilt
-     (points_status and tilt_status good, src/coverage.py).
+     (points_status and tilt_status good, src/coverage.py), and no area is red
+     on any measure (points, error, tilt) — added 2026-11-01.
   4. RMS reprojection error < RMS_MAX_PX.  Shown, but no longer the main test:
      on surveyed targets RMS did not predict real-world error.
 
@@ -24,7 +25,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from src.coverage import GOOD, GRID_N, POINTS_GOOD, GridReport, compute_grid
+from src.coverage import GOOD, GRID_N, POINTS_GOOD, POOR, GridReport, compute_grid
 
 # ── Pass rules (edit here) ───────────────────────────────────────────────────
 RMS_MAX_PX = 2.0
@@ -34,7 +35,8 @@ MIN_IMAGES_PER_HALF = 6
 PLACEHOLDER_CENTRE_TOL_PX = 1.0
 BLUR_SOFT_PX = 1.5               # dot edge blur sigma: sharp photos are about 0.7-1.2 px
 BLUR_MAX_PX = 2.5                # above this a photo is blurry (ARAN68 ROW set: 4.4 px, RMS 3.3)
-TILT_PHOTOS_PER_AREA = 3          # coaching: photos to add for a low-tilt area
+TILT_PHOTOS_PER_AREA = 3
+RED_ERROR_PHOTOS = 5             # coaching: photos to add where an area's error is red          # coaching: photos to add for a low-tilt area
 DEFAULT_POINTS_PER_PHOTO = 10     # coaching: when an area has no photos yet
 
 
@@ -247,6 +249,17 @@ def grade(cal_result) -> GradeReport:
         weak = [c.name for c in rep.grid.flat if c.points_status != GOOD or (c.points and c.tilt_status != GOOD)]
         if weak:
             rep.reasons.append(f"Coverage: {len(weak)} of 9 areas need more photos ({', '.join(weak)}).")
+        # Rule (Derek, 2026-11-01): any red area in the 3x3 grid is not a pass.
+        red = [c for c in rep.grid.flat if c.status == POOR]
+        if red:
+            rep.reasons.append(f"{len(red)} of 9 areas are red ({', '.join(c.name for c in red)}). "
+                               f"Every area must be green or yellow.")
+            for c in red:
+                if c.points and c.error_status == POOR and c.points_status == GOOD:
+                    more += RED_ERROR_PHOTOS
+                    rep.coaching.append(f"{c.name}: error {c.rms_px:.2f} px (limit 1.0). Take about "
+                                        f"{RED_ERROR_PHOTOS} more sharp photos with the board in this part of "
+                                        f"the picture, held still and tilted.")
     else:
         rep.reasons.append("Coverage could not be measured.")
 
