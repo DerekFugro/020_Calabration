@@ -38,6 +38,8 @@ class DetectionResult:
     # calibrator can re-match on undistorted points (second pass).
     blobs: Optional[np.ndarray] = None
     match_rms_px: float = 0.0
+    # Dot boards: edge blur (Gaussian sigma, px) measured on the matched dots.
+    edge_blur_px: float = float("nan")
 
 
 _SUBPIX_CRITERIA = (
@@ -136,7 +138,7 @@ def _detect_dots(
     board_config: BoardConfig,
 ) -> DetectionResult:
     """Find the dots of a random-dot board (first pass, distorted pixels)."""
-    from src.dot_detector import detect_blobs, match_dots
+    from src.dot_detector import detect_blobs, edge_blur_px, match_dots
 
     blobs = detect_blobs(gray)
     m = match_dots(blobs, board_config.dot_xy_mm, image_size=size)
@@ -156,6 +158,7 @@ def _detect_dots(
         blur_score=blur_score,
         blobs=blobs,
         match_rms_px=m.rms_px,
+        edge_blur_px=edge_blur_px(gray, m.image_points, blobs),
     )
 
 

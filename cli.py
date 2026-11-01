@@ -169,6 +169,7 @@ def grade_folder(args) -> dict:
         row.update(passed=g.passed, headline=g.headline, used=cal.image_count_used,
                    rms_px=round(cal.rms, 3), fx=round(K[0, 0], 2), cx=round(K[0, 2], 2), cy=round(K[1, 2], 2),
                    repeat_10m_mm=None if rp is None else round(rp.at_10m_mm, 1),
+                   blur_px=None if g.blur_median_px != g.blur_median_px else round(g.blur_median_px, 2),
                    areas_short=sum(c.points_status != 'good' for c in g.grid.flat) if g.grid else None,
                    areas_low_tilt=sum(c.points > 0 and c.tilt_status != 'good' for c in g.grid.flat) if g.grid else None,
                    more_photos=g.more_photos, hard_stops=' | '.join(g.hard_stops),
@@ -183,7 +184,7 @@ def grade_all(root: str, out_csv: str, workers: int, max_images: int) -> int:
     folders = [d for d, _, fs in os.walk(root)
                if os.path.basename(d).lower() != "notused" and sum(f.lower().endswith(('.jpg', '.jpeg', '.png')) for f in fs) >= 30]
     print(f"{len(folders)} image folders under {root}")
-    cols = ["folder", "board", "passed", "headline", "images", "used", "rms_px", "repeat_10m_mm",
+    cols = ["folder", "board", "passed", "headline", "images", "used", "rms_px", "repeat_10m_mm", "blur_px",
             "areas_short", "areas_low_tilt", "more_photos", "fx", "cx", "cy", "hard_stops", "reasons", "coaching"]
     jobs = [(f, max_images) for f in sorted(folders)]
     with open(out_csv, "w", newline="", encoding="utf-8") as fh:

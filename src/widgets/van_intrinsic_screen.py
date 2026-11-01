@@ -25,9 +25,9 @@ from PySide6.QtWidgets import (
 
 from src.van_scan import CAMERAS, scan
 
-COLS = ["Camera", "Serial", "Van", "Photos", "Board", "RMS px",
+COLS = ["Camera", "Serial", "Van", "Photos", "Board", "RMS px", "Blur px",
         "Error @10 m", "vs filed @10 m", "Grade", "What to do", "Folder"]
-C_CAM, C_SER, C_VAN, C_PH, C_BRD, C_RMS, C_ERR, C_FILED, C_GRADE, C_TODO, C_DIR = range(len(COLS))
+C_CAM, C_SER, C_VAN, C_PH, C_BRD, C_RMS, C_BLUR, C_ERR, C_FILED, C_GRADE, C_TODO, C_DIR = range(len(COLS))
 
 GREEN = QColor(60, 140, 70)
 AMBER = QColor(170, 120, 30)
@@ -145,7 +145,7 @@ class VanIntrinsicScreen(QWidget):
             self.table.setItem(r, C_SER, _item(cf.serial, editable=True))
             self.table.setItem(r, C_VAN, _item(cf.van, editable=True))
             self.table.setItem(r, C_PH, _item(cf.images))
-            for c in (C_BRD, C_RMS, C_ERR, C_FILED, C_GRADE):
+            for c in (C_BRD, C_RMS, C_BLUR, C_ERR, C_FILED, C_GRADE):
                 self.table.setItem(r, c, _item(""))
             self.table.setItem(r, C_TODO, _item("; ".join(cf.notes) or "not graded yet"))
             self.table.setItem(r, C_DIR, _item(os.path.relpath(cf.folder, root)))
@@ -198,6 +198,13 @@ class VanIntrinsicScreen(QWidget):
         g = run.grade
         self.table.setItem(r, C_BRD, _item(run.board.name))
         self.table.setItem(r, C_RMS, _item(f"{run.cal.rms:.2f}"))
+        bl = g.blur_median_px
+        bi = _item("—" if bl != bl else f"{bl:.1f}")
+        if bl == bl and bl > 2.5:
+            bi.setBackground(RED)
+        elif bl == bl and bl > 1.5:
+            bi.setBackground(AMBER)
+        self.table.setItem(r, C_BLUR, bi)
         rp = g.repeatability
         self.table.setItem(r, C_ERR, _item("—" if rp is None else f"{rp.at_10m_mm:.0f} mm"))
         self.table.setItem(r, C_FILED, _item("—" if run.vs_filed_10m_mm is None

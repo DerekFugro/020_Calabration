@@ -17,6 +17,7 @@ write_outputs(...) -> tuple[Path, Path]   # YAML + PDF, same timestamp
 
 from __future__ import annotations
 
+import math
 import os
 from datetime import datetime
 from pathlib import Path
@@ -140,6 +141,9 @@ def write_yaml(
             "repeatability_p95_mrad": None if rp is None else round(rp.est_error_p95_mrad, 3),
             "repeatability_at_10m_mm": None if rp is None else round(rp.at_10m_mm, 1),
             "more_photos_needed": int(g.more_photos),
+            "dot_edge_blur_median_px": None if math.isnan(getattr(g, "blur_median_px", float("nan")))
+                                       else round(g.blur_median_px, 2),
+            "blurry_photos": [Path(p).name for p, _ in getattr(g, "blurry_images", [])],
             "rules": "src/grading.py 2026-10-31: no hard stop, repeatability <= 1 mrad, "
                      "all 3x3 areas with enough points and tilt, RMS < 2 px",
         }
@@ -237,6 +241,9 @@ def _grade_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:
         pdf.multi_cell(_CW, 4.2, _ascii(f"Repeatability: about {rp.at_10m_mm:.0f} mm at 10 m "
                                         f"({rp.est_error_p95_mrad:.2f} mrad, 95% of the image)."),
                        new_x="LMARGIN", new_y="NEXT")
+    if not math.isnan(getattr(g, "blur_median_px", float("nan"))):
+        pdf.multi_cell(_CW, 4.2, _ascii(f"Sharpness: dot edge blur {g.blur_median_px:.1f} px "
+                                        "(sharp is about 1 px)."), new_x="LMARGIN", new_y="NEXT")
     for s in g.hard_stops:
         pdf.multi_cell(_CW, 4.2, _ascii("STOP: " + s), new_x="LMARGIN", new_y="NEXT")
     for r in g.reasons:
@@ -249,6 +256,9 @@ def _grade_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:
             pdf.multi_cell(_CW, 4.2, _ascii("* " + c), new_x="LMARGIN", new_y="NEXT")
     for p, e in g.worst_images:
         pdf.multi_cell(_CW, 4.2, _ascii(f"  worst photo: {Path(p).name}  {e:.2f} px"), new_x="LMARGIN", new_y="NEXT")
+    for p, b in getattr(g, "blurry_images", [])[:10]:
+        pdf.multi_cell(_CW, 4.2, _ascii(f"  blurry photo: {Path(p).name}  edge blur {b:.1f} px"),
+                       new_x="LMARGIN", new_y="NEXT")
 
 
 def _coverage_grid_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:

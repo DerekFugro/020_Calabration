@@ -32,6 +32,8 @@ REPEAT_MAX_MRAD = 1.0
 MIN_IMAGES = 15
 MIN_IMAGES_PER_HALF = 6
 PLACEHOLDER_CENTRE_TOL_PX = 1.0
+BLUR_SOFT_PX = 1.5               # dot edge blur sigma: sharp photos are about 0.7-1.2 px
+BLUR_MAX_PX = 2.5                # above this a photo is blurry (ARAN68 ROW set: 4.4 px, RMS 3.3)
 TILT_PHOTOS_PER_AREA = 3          # coaching: photos to add for a low-tilt area
 DEFAULT_POINTS_PER_PHOTO = 10     # coaching: when an area has no photos yet
 
@@ -61,14 +63,20 @@ class GradeReport:
     grid: GridReport | None = None
     worst_images: list = field(default_factory=list)  # (path, rms_px)
     more_photos: int = 0
+    blur_median_px: float = math.nan                    # dot edge blur, median over photos
+    blurry_images: list = field(default_factory=list)   # (path, blur_px), worst first
 
     def as_text(self) -> str:
         lines = [self.headline]
+        if not math.isnan(self.blur_median_px):
+            lines.append(f"  Sharpness: dot edge blur {self.blur_median_px:.1f} px (sharp is about 1 px)")
         lines += [f"  STOP: {s}" for s in self.hard_stops]
         lines += [f"  - {r}" for r in self.reasons]
         if self.coaching:
             lines.append("What to do:")
             lines += [f"  * {c}" for c in self.coaching]
+        import os as _os
+        lines += [f"    blurry: {_os.path.basename(p)}  {b:.1f} px" for p, b in self.blurry_images[:10]]
         return "\n".join(lines)
 
 
@@ -152,6 +160,37 @@ def coverage_counts(points_xy: list, size) -> np.ndarray:
     return c
 
 
+def _grade_blur(rep, cal_result) -> None:
+    blur = np.array([b for b in getattr(cal_result, "photo_blur_px", []) or []], float)
+    paths = [p for p, _, _ in cal_result.points_used]
+    if blur.size == 0 or np.isnan(blur).all() or len(paths) != blur.size:
+        return
+    rep.blur_median_px = float(np.nanmedian(blur))
+    rep.blurry_images = sorted(((p, float(b)) for p, b in zip(paths, blur) if b > BLUR_MAX_PX),
+                               key=lambda x: -x[1])
+    if rep.blur_median_px > BLUR_MAX_PX:
+        rep.reasons.append(f"Photos are blurry: dot edge blur {rep.blur_median_px:.1f} px "
+                           f"(sharp is about 1 px, limit {BLUR_MAX_PX:g} px).")
+        tip = "Every photo is soft. Do NOT refocus the camera (that changes the lens numbers). "
+        # Board distance per photo (board units are mm): if the far photos are sharper,
+        # the board is held closer than the lens is focused.
+        try:
+            z = np.array([float(np.ravel(t)[2]) for t in cal_result.tvecs]) / 1000.0
+            ok = ~np.isnan(blur)
+            if ok.sum() >= 6 and np.corrcoef(z[ok], blur[ok])[0, 1] < -0.3:
+                sharp = z[ok][blur[ok] <= np.nanpercentile(blur, 25)]
+                tip += (f"The sharpest photos were with the board about {np.median(sharp):.1f} m away: "
+                        f"hold it at that distance or farther. ")
+        except Exception:  # noqa: BLE001
+            pass
+        tip += "Clean the lens, hold the board still, and use good light."
+        rep.coaching.append(tip)
+    elif rep.blurry_images:
+        n = len(rep.blurry_images)
+        rep.coaching.append(f"{n} blurry photo{'s' if n > 1 else ''} (edge blur over {BLUR_MAX_PX:g} px, "
+                            f"listed): hold the board still; remove them and recalibrate.")
+
+
 # ── The grade ────────────────────────────────────────────────────────────────
 
 def grade(cal_result) -> GradeReport:
@@ -214,6 +253,9 @@ def grade(cal_result) -> GradeReport:
         rep.reasons.append(f"RMS {rep.rms_px:.2f} px (limit {RMS_MAX_PX:g} px): the dots are not found "
                            f"cleanly. Usually blur, motion or a board that is not flat.")
         rep.coaching.append("Hold the board still (a stand is best), use short exposure and good light.")
+
+    # Blur (dot boards: measured on the dot edges, src/dot_detector.edge_blur_px)
+    _grade_blur(rep, cal_result)
 
     # Worst photos
     errs = [e for _, e in cal_result.per_image_errors]

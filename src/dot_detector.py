@@ -184,3 +184,42 @@ def rematch_dots(blobs: np.ndarray, board_xy_mm: np.ndarray, prev: DotMatch,
     ids = np.nonzero(sel)[0]
     return DotMatch(ids=ids, image_points=xy[ii[sel]], n_blobs=len(blobs),
                     rms_px=float(np.sqrt(np.mean(dd[sel] ** 2))))
+
+
+def edge_blur_px(gray: np.ndarray, points: np.ndarray, blobs: np.ndarray) -> float:
+    """How blurry the dots' edges are: Gaussian blur sigma in pixels (median over dots).
+
+    For a blurred black/white edge the steepest slope is contrast / (sigma*sqrt(2 pi)),
+    so sigma = contrast / (sqrt(2 pi) * steepest slope).  Works on any edge direction,
+    so tilted (elliptical) dots are fine.  Sharp photos give about 0.7-1.2 px.
+    NaN if no dot could be measured.
+    """
+    if points is None or len(points) == 0 or blobs is None or len(blobs) == 0:
+        return float("nan")
+    g = gray.astype(np.float32)
+    h, w = g.shape[:2]
+    gx = cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3) / 8.0
+    gy = cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize=3) / 8.0
+    mag = np.hypot(gx, gy)
+    pts = np.asarray(points, np.float64).reshape(-1, 2)
+    _, bi = _nn(pts, blobs[:, :2])
+    sig = []
+    for (x, y), k in zip(pts, bi):
+        r = 0.25 * (blobs[k, 2] + blobs[k, 3])          # mean semi-axis
+        R = int(np.ceil(1.7 * blobs[k, 2] / 2)) + 2
+        x0, x1, y0, y1 = int(x) - R, int(x) + R + 1, int(y) - R, int(y) + R + 1
+        if r < 5 or x0 < 0 or y0 < 0 or x1 > w or y1 > h:
+            continue                                     # too small or cut by the frame
+        yy, xx = np.mgrid[y0:y1, x0:x1]
+        d = np.hypot(xx - x, yy - y) / r
+        patch, m = g[y0:y1, x0:x1], mag[y0:y1, x0:x1]
+        inside = np.median(patch[d < 0.5])
+        outside = np.median(patch[(d > 1.4) & (d < 1.7)])
+        contrast = outside - inside
+        ring = m[(d > 0.6) & (d < 1.4)]
+        if contrast < 30 or ring.size < 20:
+            continue
+        slope = np.percentile(ring, 95)
+        if slope > 0:
+            sig.append(contrast / (np.sqrt(2 * np.pi) * slope))
+    return float(np.median(sig)) if sig else float("nan")

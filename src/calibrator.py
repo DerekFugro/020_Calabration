@@ -42,6 +42,8 @@ class CalibrationResult:
     # image_pts (N,2)).  Feeds the 3x3 coverage grid (src/coverage.py).
     points_used: list = field(default_factory=list)
     grade: object = None         # src.grading.GradeReport, set by the worker
+    # Dot boards: edge blur sigma (px) per used photo, same order as points_used.
+    photo_blur_px: list = field(default_factory=list)
 
 
 def _refine_dot_matches(detections, filter_results, board_config, image_size,
@@ -196,6 +198,7 @@ def calibrate(
         err = float(np.sqrt(np.mean(np.sum(diff ** 2, axis=1))))
         per_image_errors.append((path, err))
     per_image_errors.sort(key=lambda x: x[1], reverse=True)
+    _blur_by_path = {d.image_path: getattr(d, "edge_blur_px", float("nan")) for d in detections}
 
     return CalibrationResult(
         camera_matrix=camera_matrix,
@@ -207,6 +210,7 @@ def calibrate(
         image_size=image_size,
         per_image_errors=per_image_errors,
         point_count_used=int(sum(len(p) for p in object_points)),
+        photo_blur_px=[_blur_by_path.get(p, float("nan")) for p in accepted_paths],
         points_used=[
             (path, np.asarray(o, np.float64).reshape(-1, 3),
              np.asarray(i, np.float64).reshape(-1, 2))
