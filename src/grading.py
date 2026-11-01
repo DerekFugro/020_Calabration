@@ -64,6 +64,7 @@ class GradeReport:
     worst_images: list = field(default_factory=list)  # (path, rms_px)
     more_photos: int = 0
     warnings: list = field(default_factory=list)        # shown, but do not fail the grade
+    left_out: list = field(default_factory=list)        # (path, why) left out by src/auto_clean.py
     blur_median_px: float = math.nan                    # dot edge blur, median over photos
     blurry_images: list = field(default_factory=list)   # (path, blur_px), worst first
 
@@ -74,6 +75,10 @@ class GradeReport:
         lines += [f"  STOP: {s}" for s in self.hard_stops]
         lines += [f"  - {r}" for r in self.reasons]
         lines += [f"  ! {w}" for w in self.warnings]
+        if self.left_out:
+            lines.append(f"  Left out automatically: {len(self.left_out)} photo(s)")
+            import os as _os2
+            lines += [f"    {_os2.path.basename(p)}: {why}" for p, why in self.left_out[:15]]
         if self.coaching:
             lines.append("What to do:")
             lines += [f"  * {c}" for c in self.coaching]
@@ -193,7 +198,7 @@ def _grade_blur(rep, cal_result) -> None:
     elif rep.blurry_images:
         n = len(rep.blurry_images)
         rep.coaching.append(f"{n} blurry photo{'s' if n > 1 else ''} (edge blur over {BLUR_MAX_PX:g} px, "
-                            f"listed): hold the board still; remove them and recalibrate.")
+                            f"listed): hold the board still.")
 
 
 # ── The grade ────────────────────────────────────────────────────────────────
@@ -259,6 +264,8 @@ def grade(cal_result) -> GradeReport:
                            f"cleanly. Usually blur, motion or a board that is not flat.")
         rep.coaching.append("Hold the board still (a stand is best), use short exposure and good light.")
 
+    rep.left_out = list(getattr(cal_result, "auto_removed", []) or [])
+
     # Blur (dot boards: measured on the dot edges, src/dot_detector.edge_blur_px)
     _grade_blur(rep, cal_result)
 
@@ -269,8 +276,8 @@ def grade(cal_result) -> GradeReport:
         rep.worst_images = [(p, e) for p, e in cal_result.per_image_errors if e > lim][:10]
         if rep.worst_images:
             n = len(rep.worst_images)
-            rep.coaching.append(f"Remove the {'worst photo' if n == 1 else f'{n} worst photos'} "
-                                f"(listed) and recalibrate.")
+            rep.coaching.append(f"{'1 photo still fits' if n == 1 else f'{n} photos still fit'} "
+                                f"poorly (listed): hold the board still and take replacements.")
 
     rep.more_photos = more
     rep.passed = not rep.hard_stops and not rep.reasons

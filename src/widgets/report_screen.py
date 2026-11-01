@@ -161,7 +161,7 @@ class ReportScreen(QWidget):
         self.new_cal_button.setFixedHeight(BUTTON_H)
 
         # ── Outlier panel (hidden until bad images found) ──────────────────
-        self.outlier_group   = QGroupBox("⚠  Problem Images Detected")
+        self.outlier_group   = QGroupBox("Photos left out automatically")
         self.outlier_label   = QLabel()
         self.outlier_label.setWordWrap(True)
         self.recalibrate_btn = QPushButton("Remove Flagged Images & Recalibrate")
@@ -489,25 +489,17 @@ class ReportScreen(QWidget):
         self.remove_and_recalibrate_requested.emit(self._outlier_paths)
 
     def _update_outliers(self, cal_result: CalibrationResult) -> None:
+        """List the photos src/auto_clean.py left out (no button: it is automatic)."""
         import pathlib
-        outliers = [
-            (path, err)
-            for path, err in cal_result.per_image_errors
-            if err > _OUTLIER_THRESHOLD
-        ]
-        self._outlier_paths = [path for path, _ in outliers]
-
-        if not outliers:
+        self.recalibrate_btn.hide()
+        removed = list(getattr(cal_result, "auto_removed", []) or [])
+        self._outlier_paths = []
+        if not removed:
             self.outlier_group.hide()
             return
-
-        lines = [
-            f"• {pathlib.Path(p).name}  —  {e:.2f} px  (threshold: {_OUTLIER_THRESHOLD} px)"
-            for p, e in outliers
-        ]
+        lines = [f"• {pathlib.Path(p).name}  —  {why}" for p, why in removed]
         self.outlier_label.setText(
-            "The following images have unusually high reprojection error.\n"
-            "Removing them will improve calibration accuracy:\n\n"
-            + "\n".join(lines)
-        )
+            f"{len(removed)} photo(s) fit much worse than the rest or were blurry, so they were "
+            "left out and the camera was calibrated again.  They stay in the folder.\n\n"
+            + "\n".join(lines))
         self.outlier_group.show()

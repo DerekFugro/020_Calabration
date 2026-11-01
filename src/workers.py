@@ -141,8 +141,10 @@ class CalibrationWorker(QThread):
     def run(self) -> None:
         try:
             self.progress.emit("Running camera calibration…")
-            cal_result = calibrate(
-                self._detections, self._filter_results, self._board_config
+            from src.auto_clean import calibrate_auto
+            cal_result = calibrate_auto(
+                self._detections, self._filter_results, self._board_config,
+                progress_cb=self.progress.emit,
             )
             self.progress.emit("Evaluating calibration quality…")
             quality = evaluate(cal_result)

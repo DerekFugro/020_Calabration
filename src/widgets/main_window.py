@@ -166,6 +166,9 @@ class MainWindow(QMainWindow):
         self._filter_results = filter_results
         self.review_screen.set_data(detections, filter_results)
         self.stack.setCurrentIndex(1)
+        # Fully automatic: no Proceed click.  Bad photos are left out by
+        # src/auto_clean.py and listed in the report.
+        self._on_proceed_requested()
         accepted = sum(f.accepted for f in filter_results)
         self.statusBar().showMessage(
             f"Detection complete ({self._board_config.name}) — {accepted} accepted, "

@@ -77,7 +77,8 @@ def run_folder(folder: str, max_images: int = 0, boards=None, board=None,
             if r.move_note:
                 say(r.move_note)
         say("calibrating")
-        r.cal = calibrate(r.detections, r.filter_results, board)
+        from src.auto_clean import calibrate_auto
+        r.cal = calibrate_auto(r.detections, r.filter_results, board, progress_cb=say)
         r.quality = evaluate(r.cal)
         say("grading")
         from src.grading import grade, ray_disagreement_mrad

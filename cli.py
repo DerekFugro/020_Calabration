@@ -111,7 +111,10 @@ def main(argv: list[str] | None = None) -> int:
     n_ok = sum(f.accepted for f in filts)
     print(f"Accepted {n_ok} / {len(paths)} images")
 
-    cal = calibrate(dets, filts, board)
+    from src.auto_clean import calibrate_auto, removed_text
+    cal = calibrate_auto(dets, filts, board)
+    for line in removed_text(cal):
+        print("left out: " + line)
     q = evaluate(cal)
     K, D = cal.camera_matrix, cal.dist_coeffs.ravel()
     print(f"RMS {cal.rms:.3f} px   {q.verdict}   images {cal.image_count_used}   points {cal.point_count_used}")
@@ -164,7 +167,8 @@ def grade_folder(args) -> dict:
         dets = detect_images(paths, b, verbose=False)
         filts = filter_detections(dets, min_corners=MIN_DOTS_PER_IMAGE if b.is_dots else 6,
                                   min_blur=0.0 if b.is_dots else 20.0)
-        cal = calibrate(dets, filts, b)
+        from src.auto_clean import calibrate_auto
+        cal = calibrate_auto(dets, filts, b)
         g = grade(cal); K = cal.camera_matrix; rp = g.repeatability
         row.update(passed=g.passed, headline=g.headline, used=cal.image_count_used,
                    rms_px=round(cal.rms, 3), fx=round(K[0, 0], 2), cx=round(K[0, 2], 2), cy=round(K[1, 2], 2),

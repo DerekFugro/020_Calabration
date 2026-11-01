@@ -44,6 +44,8 @@ class CalibrationResult:
     grade: object = None         # src.grading.GradeReport, set by the worker
     # Dot boards: edge blur sigma (px) per used photo, same order as points_used.
     photo_blur_px: list = field(default_factory=list)
+    # Photos left out automatically by src/auto_clean.py: (path, why)
+    auto_removed: list = field(default_factory=list)
 
 
 def _refine_dot_matches(detections, filter_results, board_config, image_size,

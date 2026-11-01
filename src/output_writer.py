@@ -139,6 +139,7 @@ def write_yaml(
             "hard_stops": list(g.hard_stops),
             "reasons":  list(g.reasons),
             "warnings": list(getattr(g, "warnings", [])),
+            "left_out_automatically": [f"{Path(p).name}: {why}" for p, why in getattr(g, "left_out", [])],
             "repeatability_p95_mrad": None if rp is None else round(rp.est_error_p95_mrad, 3),
             "repeatability_at_10m_mm": None if rp is None else round(rp.at_10m_mm, 1),
             "more_photos_needed": int(g.more_photos),
@@ -259,6 +260,9 @@ def _grade_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:
             pdf.multi_cell(_CW, 4.2, _ascii("* " + c), new_x="LMARGIN", new_y="NEXT")
     for p, e in g.worst_images:
         pdf.multi_cell(_CW, 4.2, _ascii(f"  worst photo: {Path(p).name}  {e:.2f} px"), new_x="LMARGIN", new_y="NEXT")
+    for p, why in getattr(g, "left_out", [])[:20]:
+        pdf.multi_cell(_CW, 4.2, _ascii(f"  left out automatically: {Path(p).name}  ({why})"),
+                       new_x="LMARGIN", new_y="NEXT")
     for p, b in getattr(g, "blurry_images", [])[:10]:
         pdf.multi_cell(_CW, 4.2, _ascii(f"  blurry photo: {Path(p).name}  edge blur {b:.1f} px"),
                        new_x="LMARGIN", new_y="NEXT")
