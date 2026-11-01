@@ -144,6 +144,7 @@ class MainWindow(QMainWindow):
             raw_folder=folder if pending_raws else None,
             parent=self,
             board_candidates=self.setup_screen.board_candidates,
+            move_folder=folder if self.setup_screen.move_unused else None,
         )
         self._detection_worker.progress.connect(self.statusBar().showMessage)
         self._detection_worker.board_resolved.connect(self._on_board_resolved)

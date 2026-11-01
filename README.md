@@ -408,3 +408,8 @@ them touches `detector.py`, `calibrator.py`, and four test files.
 - **Load Intrinsic > One camera**: the original setup / review / report flow.
 - **Capture Intrinsic, Load Extrinsic, Capture Extrinsic**: placeholders, next to build.
 - CLI: `python cli.py FOLDER --van ARAN65 --role ForwardRight --serial 101324 --export OUTDIR`
+- **NotUsed folder**: with *Move unusable photos* on (Advanced, default on), photos that can never be
+  used (unreadable, no board, wrong image size) are moved to `NotUsed\` next to the others and
+  listed in `NotUsed\why.txt`. High-error or blurry photos are only left out, never moved. Nothing
+  moves if more than half the set looks unusable, or when using fewer than all photos. CLI:
+  `--move-unused` (off by default).

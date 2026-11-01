@@ -44,8 +44,10 @@ class DetectionWorker(QThread):
         raw_folder: str | None = None,
         parent=None,
         board_candidates: list[BoardConfig] | None = None,
+        move_folder: str | None = None,
     ) -> None:
         super().__init__(parent)
+        self._move_folder = move_folder   # set: move unusable photos to NotUsed
         self._image_paths = image_paths
         self._board_config = board_config
         self._board_candidates = board_candidates or []
@@ -101,6 +103,12 @@ class DetectionWorker(QThread):
                 )
             else:
                 filter_results = filter_detections(detections, min_blur=self._min_blur)
+            from src.not_used import mark_wrong_size, move_unusable
+            mark_wrong_size(detections, filter_results)
+            if self._move_folder:
+                _moved, note = move_unusable(self._move_folder, detections, filter_results)
+                if note:
+                    self.progress.emit(note)
             accepted = sum(f.accepted for f in filter_results)
             self.progress.emit(
                 f"Detection complete — {accepted} accepted, "
@@ -162,8 +170,10 @@ class VanIntrinsicWorker(QThread):
     row_finished = Signal(int, object)
     all_done     = Signal()
 
-    def __init__(self, jobs, max_images: int = 0, parent=None) -> None:
+    def __init__(self, jobs, max_images: int = 0, parent=None,
+                 move_unused: bool = False) -> None:
         super().__init__(parent)
+        self._move_unused = move_unused
         self._jobs = list(jobs)
         self._max_images = max_images
         self._stop = False
@@ -185,6 +195,7 @@ class VanIntrinsicWorker(QThread):
                 break
             self.row_started.emit(row, "starting")
             res = run_folder(folder, self._max_images, boards=boards, filed_xml=filed,
-                             progress_cb=lambda m, r=row: self.row_progress.emit(r, m))
+                             progress_cb=lambda m, r=row: self.row_progress.emit(r, m),
+                             move_unused=self._move_unused)
             self.row_finished.emit(row, res)
         self.all_done.emit()

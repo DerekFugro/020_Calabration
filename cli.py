@@ -39,6 +39,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--serial", default="", help="camera serial (needed with --save)")
     ap.add_argument("--role", default="", help="camera role, e.g. PAVE or ROW")
     ap.add_argument("--save", action="store_true", help="write CAL_ YAML + PDF next to the images")
+    ap.add_argument("--move-unused", action="store_true",
+                    help="move unreadable / no-board / wrong-size photos to a NotUsed subfolder")
     ap.add_argument("--van", default="", help="van name, e.g. ARAN65 (for --export)")
     ap.add_argument("--export", metavar="OUTDIR", help="write every format (fleet XML, PG RWC, OpenCV, ROS, "
                     "Kalibr, COLMAP, Metashape, JSON, CSV) into OUTDIR; needs --van, --role, --serial")
@@ -97,6 +99,15 @@ def main(argv: list[str] | None = None) -> int:
     # dot boards: no blur filter (see src/workers.py)
     filts = filter_detections(dets, min_corners=min_pts,
                               min_blur=0.0 if board.is_dots else a.min_blur)
+    from src.not_used import mark_wrong_size, move_unusable
+    mark_wrong_size(dets, filts)
+    if a.move_unused:
+        if a.max_images:
+            print("--move-unused is ignored with --max-images (not every photo was checked)")
+        else:
+            moved, note = move_unusable(a.folder, dets, filts)
+            if note:
+                print(note)
     n_ok = sum(f.accepted for f in filts)
     print(f"Accepted {n_ok} / {len(paths)} images")
 
@@ -170,7 +181,7 @@ def grade_folder(args) -> dict:
 def grade_all(root: str, out_csv: str, workers: int, max_images: int) -> int:
     """Grade every folder under root that holds >= 30 images."""
     folders = [d for d, _, fs in os.walk(root)
-               if sum(f.lower().endswith(('.jpg', '.jpeg', '.png')) for f in fs) >= 30]
+               if os.path.basename(d).lower() != "notused" and sum(f.lower().endswith(('.jpg', '.jpeg', '.png')) for f in fs) >= 30]
     print(f"{len(folders)} image folders under {root}")
     cols = ["folder", "board", "passed", "headline", "images", "used", "rms_px", "repeat_10m_mm",
             "areas_short", "areas_low_tilt", "more_photos", "fx", "cx", "cy", "hard_stops", "reasons", "coaching"]

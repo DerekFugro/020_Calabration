@@ -18,7 +18,7 @@ from datetime import datetime
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QAbstractItemView, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+    QAbstractItemView, QCheckBox, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
     QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QSplitter, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
@@ -66,11 +66,21 @@ class VanIntrinsicScreen(QWidget):
         self.max_spin.setSpecialValueText("all"); self.max_spin.setSuffix(" photos")
         self.max_spin.setToolTip("Use at most this many photos per camera, evenly spaced. "
                                  "'all' is the real result; fewer is only for a quick look.")
+        from PySide6.QtCore import QSettings
+        self._settings = QSettings("SidewalkProfiler", "Calibration")
+        self.move_check = QCheckBox("Move unusable photos to NotUsed")
+        self.move_check.setToolTip("Unreadable, no board, or wrong image size.  Nothing is deleted; "
+                                   "NotUsed\\why.txt lists each photo and why.  Only when using all photos.  "
+                                   "Switch off when checking old data you don't want rearranged.")
+        self.move_check.setChecked(str(self._settings.value("filter/move_unused", "true")).lower() == "true")
+        self.move_check.toggled.connect(
+            lambda on: self._settings.setValue("filter/move_unused", "true" if on else "false"))
         self.grade_all_btn = QPushButton("Grade all")
         self.grade_sel_btn = QPushButton("Grade selected")
         self.stop_btn = QPushButton("Stop"); self.stop_btn.setEnabled(False)
         run = QHBoxLayout()
         run.addWidget(QLabel("Use")); run.addWidget(self.max_spin); run.addWidget(QLabel("per camera"))
+        run.addSpacing(20); run.addWidget(self.move_check)
         run.addStretch(1)
         run.addWidget(self.grade_all_btn); run.addWidget(self.grade_sel_btn); run.addWidget(self.stop_btn)
 
@@ -158,7 +168,8 @@ class VanIntrinsicScreen(QWidget):
         if not jobs:
             return
         from src.workers import VanIntrinsicWorker
-        self._worker = VanIntrinsicWorker(jobs, self.max_spin.value(), parent=self)
+        self._worker = VanIntrinsicWorker(jobs, self.max_spin.value(), parent=self,
+                                          move_unused=self.move_check.isChecked())
         self._worker.row_started.connect(lambda r, t: self._set_grade_cell(r, "working…", None))
         self._worker.row_progress.connect(lambda r, t: self._set_grade_cell(r, t + "…", None))
         self._worker.row_finished.connect(self._row_done)
@@ -194,6 +205,8 @@ class VanIntrinsicScreen(QWidget):
         word = "PASS" if g.passed else ("FAIL" if g.hard_stops else "NOT GOOD ENOUGH")
         self._set_grade_cell(r, word, GREEN if g.passed else (RED if g.hard_stops else AMBER))
         todo = g.coaching[0] if g.coaching else ("—" if g.passed else g.headline)
+        if run.move_note:
+            todo = f"{todo}   [{run.move_note}]"
         self.table.setItem(r, C_TODO, _item(todo))
         if r in {i.row() for i in self.table.selectedIndexes()}:
             self._show_details()
@@ -230,6 +243,10 @@ class VanIntrinsicScreen(QWidget):
                       f"fx {K[0,0]:.2f}  fy {K[1,1]:.2f}  cx {K[0,2]:.2f}  cy {K[1,2]:.2f}",
                       "dist " + "  ".join(f"{v:.6f}" for v in run.cal.dist_coeffs.ravel()),
                       f"{run.cal.image_count_used} photos used, {run.cal.point_count_used} points"]
+            if run.move_note:
+                lines.append("")
+                lines.append(run.move_note + (":" if run.moved else ""))
+                lines += [f"  {n}  — {why}" for n, why in run.moved]
             if run.vs_filed_10m_mm is not None:
                 lines.append(f"Differs from the filed calibration by {run.vs_filed_10m_mm:.0f} mm "
                              "at 10 m (95% of the image).")

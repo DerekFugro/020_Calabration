@@ -85,7 +85,8 @@ def _serial_for(folder: Path, camera: str) -> tuple[str, str]:
 def scan(root: str, min_images: int = MIN_IMAGES) -> list[CameraFolder]:
     """Every folder under root with at least min_images photos, sorted by camera."""
     out = []
-    for d, _dirs, _files in os.walk(root):
+    for d, dirs, _files in os.walk(root):
+        dirs[:] = [x for x in dirs if x.lower() != "notused"]
         n = len(find_images(d))
         if n < min_images:
             continue

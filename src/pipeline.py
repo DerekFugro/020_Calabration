@@ -38,6 +38,8 @@ class FolderRun:
     cal: object = None
     quality: object = None
     vs_filed_10m_mm: float | None = None   # p95 difference to filed XML at 10 m
+    moved: list = field(default_factory=list)   # (file, reason) moved to NotUsed
+    move_note: str = ""
     error: str = ""
 
     @property
@@ -47,7 +49,7 @@ class FolderRun:
 
 def run_folder(folder: str, max_images: int = 0, boards=None, board=None,
                filed_xml: str = "", min_blur: float = 20.0,
-               progress_cb=None) -> FolderRun:
+               progress_cb=None, move_unused: bool = False) -> FolderRun:
     say = progress_cb or (lambda _m: None)
     r = FolderRun(folder=folder)
     try:
@@ -68,6 +70,12 @@ def run_folder(folder: str, max_images: int = 0, boards=None, board=None,
             r.detections,
             min_corners=MIN_DOTS_PER_IMAGE if board.is_dots else 6,
             min_blur=0.0 if board.is_dots else min_blur)
+        from src.not_used import mark_wrong_size, move_unusable
+        mark_wrong_size(r.detections, r.filter_results)
+        if move_unused and not max_images:
+            r.moved, r.move_note = move_unusable(folder, r.detections, r.filter_results)
+            if r.move_note:
+                say(r.move_note)
         say("calibrating")
         r.cal = calibrate(r.detections, r.filter_results, board)
         r.quality = evaluate(r.cal)

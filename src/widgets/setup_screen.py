@@ -148,10 +148,14 @@ class SetupScreen(QWidget):
         # board-printing helper.
 
         # Filter parameters group
-        self.filter_group       = QGroupBox("Advanced: chessboard blur filter (dot boards skip it)")
+        self.filter_group       = QGroupBox("Advanced")
         self.min_blur_label     = QLabel("Min Blur Score:")
         self.min_blur_spin      = QDoubleSpinBox()
-        self.min_blur_hint      = QLabel("(lower = accept blurrier images; 0 = no blur check)")
+        self.min_blur_hint      = QLabel("(chessboard only; dot boards skip it.  lower = accept blurrier images; 0 = no blur check)")
+        from PySide6.QtWidgets import QCheckBox
+        self.move_unused_check  = QCheckBox("Move unusable photos (unreadable, no board, wrong size) to a NotUsed folder")
+        self.move_unused_check.setToolTip("Nothing is deleted.  NotUsed\\why.txt lists each photo and why.  "
+                                          "Switch off when checking old data you don't want rearranged.")
         self.min_blur_spin.setRange(0.0, 5000.0)
         self.min_blur_spin.setDecimals(1)
         self.min_blur_spin.setSingleStep(5.0)
@@ -215,6 +219,7 @@ class SetupScreen(QWidget):
         self.filter_layout.setSpacing(SPACING)
         self.filter_layout.addRow(self.min_blur_label, self.min_blur_spin)
         self.filter_layout.addRow(self.min_blur_hint)
+        self.filter_layout.addRow(self.move_unused_check)
         self.filter_group.setLayout(self.filter_layout)
 
         # Main layout
@@ -275,6 +280,7 @@ class SetupScreen(QWidget):
         self.cell_width_spin.setValue(float(s.value(_KEY_CELL_W, DEFAULT_CELL_WIDTH_MM)))
         self.cell_height_spin.setValue(float(s.value(_KEY_CELL_H, DEFAULT_CELL_HEIGHT_MM)))
         self.min_blur_spin.setValue(float(s.value(_KEY_MIN_BLUR, _DEFAULT_MIN_BLUR)))
+        self.move_unused_check.setChecked(str(s.value("filter/move_unused", "true")).lower() == "true")
         self._load_boards(str(s.value(_KEY_BOARD, AUTO_DETECT) or AUTO_DETECT))
         self._update_run_button()
 
@@ -418,6 +424,7 @@ class SetupScreen(QWidget):
         s.setValue(_KEY_CELL_W,    board.cell_width_mm)
         s.setValue(_KEY_CELL_H,    board.cell_height_mm)
         s.setValue(_KEY_MIN_BLUR,  self.min_blur_spin.value())
+        s.setValue("filter/move_unused", "true" if self.move_unused_check.isChecked() else "false")
         s.setValue(_KEY_BOARD,     self.board_combo.currentData() or AUTO_DETECT)
 
     @property
@@ -425,6 +432,10 @@ class SetupScreen(QWidget):
         """Normalised camera role (e.g. 'PAVE'); '' if none chosen."""
         from src.calibration_store import normalise_role
         return normalise_role(self.role_combo.currentText())
+
+    @property
+    def move_unused(self) -> bool:
+        return self.move_unused_check.isChecked()
 
     @property
     def min_blur_score(self) -> float:
