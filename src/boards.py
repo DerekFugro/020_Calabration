@@ -60,10 +60,17 @@ def load_board_folder(folder: str | Path) -> BoardConfig:
         csv_path = folder / str(csv_name)
         if not csv_path.is_file():
             raise ValueError(f"{spec_path}: layout file not found: {csv_path}")
-        return BoardConfig.from_dot_csv(
+        b = BoardConfig.from_dot_csv(
             csv_path, name=name, label=str(spec.get("label") or ""),
             folder=str(folder),
         )
+        # Measured print size (Boards tab): stretch the layout to the real board.
+        sx = float(spec.get("scale_x", 1.0) or 1.0)
+        sy = float(spec.get("scale_y", 1.0) or 1.0)
+        if (sx, sy) != (1.0, 1.0):
+            b.dot_xy_mm = b.dot_xy_mm * [sx, sy]
+            b.dot_radius_mm = b.dot_radius_mm * (sx + sy) / 2
+        return b
 
     if kind == KIND_CHESSBOARD:
         return BoardConfig(

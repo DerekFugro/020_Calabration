@@ -413,3 +413,9 @@ them touches `detector.py`, `calibrator.py`, and four test files.
   listed in `NotUsed\why.txt`. High-error or blurry photos are only left out, never moved. Nothing
   moves if more than half the set looks unusable, or when using fewer than all photos. CLI:
   `--move-unused` (off by default).
+- **Boards tab**: add a board to `Cal_board`. Dots: pick the layout CSV (metres, Randot format); it is
+  checked, copied into `Cal_board\<name>\`, and a true-scale PDF is made with red A-B / C-D marks.
+  Print at 100%, measure A-B and C-D centre to centre, *Save measurement*: `scale_x` / `scale_y`
+  go into board.yaml and are applied when the board loads. Chessboard: squares and cell size, then
+  measure full width and height. *Test* runs auto-detect on a few photos. Older dot boards: *Make PDF
+  with A-B / C-D marks* writes `<name>_measure.pdf` without touching the original PDF.

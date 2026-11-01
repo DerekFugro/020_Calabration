@@ -442,6 +442,14 @@ class SetupScreen(QWidget):
         """Current blur threshold set by the user."""
         return self.min_blur_spin.value()
 
+    def reload_boards(self) -> None:
+        """Boards tab added or re-measured a board: reload the list."""
+        current = self.board_combo.currentData() or AUTO_DETECT
+        self.board_combo.blockSignals(True)
+        self.board_combo.clear()
+        self.board_combo.blockSignals(False)
+        self._load_boards(current)
+
     def set_inputs(self, folder: str, role: str, serial: str) -> None:
         """Pre-fill from the van table (Load Intrinsic > Whole van)."""
         self.folder_input.setText(folder)

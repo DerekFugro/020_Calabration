@@ -76,6 +76,12 @@ class AppWindow(QMainWindow):
             "itself instead of clicking.",
         ]), "Capture Extrinsic")
 
+        from src.widgets.boards_tab import BoardsTab
+        self.boards_tab = BoardsTab()
+        self.tabs.addTab(self.boards_tab, "Boards")
+        self.boards_tab.status.connect(self.statusBar().showMessage)
+        self.boards_tab.boards_changed.connect(self.single.setup_screen.reload_boards)
+
         central = QWidget()
         lay = QVBoxLayout(central)
         lay.addLayout(bar); lay.addWidget(self.tabs, 1)
