@@ -8,6 +8,7 @@ Per camera, into <camera folder>/Extrinsic_<date>/ :
   <stem>_extrinsic.json
   PGExteriorCalibration_<serial>_<date>.RWC   old exe format (angles UNVERIFIED, see RWC_NOTE)
   <stem>_extrinsic.pdf       report
+  <stem>_CHECK.html          one page for the office: PASS/FAIL, checks, photos (open before loading)
 A camera that did not pass still gets its files, all named NOT_PASSED_…
 """
 
@@ -222,12 +223,13 @@ def write_rwc(cam, serial: str, path: Path, camera_view: str = "") -> None:
 
 
 def export_camera(cam, site, serial: str, intrinsic_source: str, camera_view: str = "",
-                  out_root: str | None = None) -> Path:
+                  out_root: str | None = None, intrinsic=None) -> Path:
     dt = datetime.now()
     out = Path(out_root or cam.folder) / f"Extrinsic_{dt:%Y%m%d_%H%M%S}"
     out.mkdir(parents=True, exist_ok=True)
     pre = "" if cam.passed else "NOT_PASSED_"
     stem = f"{pre}{cam.van}_{cam.camera}_{serial}"
+    overlays = {}
     for sr in cam.setups:
         if sr.match is None:
             continue
@@ -239,6 +241,7 @@ def export_camera(cam, site, serial: str, intrinsic_source: str, camera_view: st
         img = overlay(sr, site, cam.K, cam.D)
         if img is not None:
             cv2.imwrite(str(d / f"{pre}{pid}_targets.png"), img)
+            overlays[sr.setup.name] = img
     data = summary(cam, serial, intrinsic_source)
     (out / f"{stem}_extrinsic.yaml").write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True),
                                                 encoding="utf-8")
@@ -253,6 +256,11 @@ def export_camera(cam, site, serial: str, intrinsic_source: str, camera_view: st
             w.writerow([s["name"], s["passed"], s["targets"], s["miss_rms_mm"], s["range_m"], *pt, *lv,
                         s["up_above_pavement_m"], " | ".join(s["problems"])])
     write_rwc(cam, serial, out / f"{pre}PGExteriorCalibration_{serial}_{dt:%Y%b%d_%H_%M}.RWC", camera_view)
+    try:
+        from src.extrinsic.html_report import write_html
+        write_html(cam, site, data, out / f"{stem}_CHECK.html", serial, intrinsic, overlays)
+    except Exception as exc:  # noqa: BLE001
+        (out / f"{stem}_html_error.txt").write_text(str(exc), encoding="utf-8")
     try:
         from src.extrinsic.report import write_pdf
         write_pdf(cam, data, out / f"{stem}_extrinsic.pdf")

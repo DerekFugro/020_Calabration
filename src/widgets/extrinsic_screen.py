@@ -241,7 +241,8 @@ class ExtrinsicScreen(QWidget):
             if not res.passed:
                 failed.append(res.camera)
             view = "0" if res.camera == "ROW" else ""
-            outs.append(str(export_camera(res, self.site, serial, self._intr[r].source, camera_view=view)))
+            outs.append(str(export_camera(res, self.site, serial, self._intr[r].source, camera_view=view,
+                                           intrinsic=self._intr[r])))
         msg = "Wrote:\n" + "\n".join(outs)
         if failed:
             msg += "\n\nNot passed (files named NOT_PASSED_): " + ", ".join(failed)
