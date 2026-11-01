@@ -26,9 +26,23 @@ from src.extrinsic.targets import match_targets, predict_pose
 MIN_TARGETS = 10           # per setup
 MAX_LOO_MM = 20.0          # per setup: leave-one-out miss, RMS over its targets
 MIN_SETUPS = 3             # per camera
-MAX_ANGLE_SPREAD_DEG = 1.0  # per camera: worst setup vs the camera's mean direction
-MAX_HEIGHT_SPREAD_M = 0.10  # per camera: camera height above the pavement, max - min
-                            # (ARAN65: 4-12 cm, mostly the pavement and how the van sits)
+# Spread limits set from the fleet (2026-11-01, 83 cameras, _analysis/extrinsic_fleet.csv):
+# setups of one camera normally disagree by 0.9 deg (median; 1.55 at p90), about equally in
+# pan, tilt and roll, so it is the van's attitude while parked, which averages out over the
+# setups.  The limits catch broken cameras/setups, not that normal noise.
+MAX_ANGLE_SPREAD_DEG = 1.5  # per camera: worst setup vs the camera's mean direction (fleet p90 1.55)
+MAX_HEIGHT_SPREAD_M = 0.20  # per camera: camera height above the pavement, max - min (fleet p90 0.21)
+OUTLIER_SETUP_DEG = 2.0     # a setup this far from the others (and 3x their median) is left out
+
+
+# Normal pointing of each camera position (pan, + right of straight ahead).  Real
+# installs differ (customers sign off the angles), so the closest one names the camera.
+NOMINAL_PAN_DEG = {"ROW": 0.0, "ForwardRight": 45.0, "ForwardLeft": -45.0, "Right": 90.0,
+                   "Left": -90.0, "RearRight": 135.0, "RearLeft": -135.0}
+
+
+def closest_position(pan_deg: float) -> str:
+    return min(NOMINAL_PAN_DEG, key=lambda k: abs((pan_deg - NOMINAL_PAN_DEG[k] + 180) % 360 - 180))
 
 
 @dataclass
@@ -123,15 +137,27 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
             sr.seed = "old clicks"
         else:
             pv = place_on_van()
-            if pv is None and cs.camera in seeds:
-                sd = seeds[cs.camera]; pv = (sd["R_bc"], sd["lever"], sd["up"]); sr.seed = "default seed"
-            elif pv is not None:
+            if pv is not None:
                 sr.seed = "other setups of this camera"
-            if pv is None:
+                cands = [pv]
+            elif cs.camera in seeds:
+                sd = seeds[cs.camera]; cands = [(sd["R_bc"], sd["lever"], sd["up"])]
+                sr.seed = "default seed"
+            else:   # position not known from the folder name: try every position
+                cands = [(sd["R_bc"], sd["lever"], sd["up"]) for sd in seeds.values()]
+                sr.seed = "default seeds, all positions tried"
+            if not cands:
                 sr.problems.append("no starting guess: no old clicks, no other setup solved, no default seed")
                 continue
-            pose = predict_pose(site, s.van, when, *pv)
-        sr.match = match_targets(img, site, K, D, *pose)
+            best = None
+            for c in cands:
+                m = match_targets(img, site, K, D, *predict_pose(site, s.van, when, *c))
+                if best is None or len(m.matches) > len(best.matches):
+                    best = m
+            sr.match = best
+            pose = None
+        if pose is not None:
+            sr.match = match_targets(img, site, K, D, *pose)
         if len(sr.match.matches) < 6:
             sr.problems.append(f"targets not found ({sr.match.note or 'too few'})"); continue
         try:
@@ -161,6 +187,18 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
 
 
 def _combine(res: CameraResult, good: list) -> None:
+    # A setup far from all the others (wrong camera's photo, van pose not saved, ...) is left out.
+    while len(good) >= 4:
+        Rm = rot_mean([g.solve.R_bc for g in good])
+        dev = np.array([rot_angle_deg(Rm.T @ g.solve.R_bc) for g in good])
+        k = int(np.argmax(dev))
+        rest = np.delete(dev, k)
+        if dev[k] > OUTLIER_SETUP_DEG and dev[k] > 3 * np.median(rest):
+            g = good.pop(k)
+            g.passed = False
+            g.problems.append(f"left out: points {dev[k]:.1f} deg away from the other setups")
+            continue
+        break
     if not good:
         res.headline = "FAIL: no setup could be solved."
         res.reasons.append("No usable setup.")
@@ -183,6 +221,13 @@ def _combine(res: CameraResult, good: list) -> None:
     if res.height_spread_m > MAX_HEIGHT_SPREAD_M:
         res.reasons.append(f"Camera height varies {res.height_spread_m * 1000:.0f} mm between setups "
                            f"(limit {MAX_HEIGHT_SPREAD_M * 1000:.0f} mm).")
+    near = closest_position(res.pan_tilt_roll[0])
+    if res.camera and near != res.camera:
+        res.warnings.append(f"The folder says {res.camera}, but the camera points {res.pan_tilt_roll[0]:.0f} deg, "
+                            f"closest to {near}. Check the folder name.")
+    elif not res.camera:
+        res.warnings.append(f"Camera position not in the folder name; it points {res.pan_tilt_roll[0]:.0f} deg, "
+                            f"closest to {near}.")
     res.warnings.append(f"Forward/right lever arms come from VBS GPS (about ±0.3 m, setups spread "
                         f"{res.lever_spread_m[0]:.2f} / {res.lever_spread_m[1]:.2f} m); the loop refines them.")
     res.passed = not res.reasons

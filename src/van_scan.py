@@ -26,6 +26,8 @@ CAMERA_ALIASES = {
     "ROW":          ["row"],
     "RearLeft":     ["rearleft", "rl", "rear_left"],
     "RearRight":    ["rearright", "rr", "rear_right"],
+    "Right":        ["right", "sideright", "rightside", "side_right"],
+    "Left":         ["left", "sideleft", "leftside", "side_left"],
     "PAVE":         ["pave", "rear"],
 }
 CAMERAS = list(CAMERA_ALIASES)

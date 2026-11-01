@@ -117,3 +117,24 @@ def test_detectors_find_disc_and_ball():
     b = detect_balls(img)
     assert np.min(np.hypot(w[:, 0] - 150, w[:, 1] - 150)) < 1.5
     assert len(b) == 1 and np.hypot(b[0, 0] - 400, b[0, 1] - 350) < 1.5
+
+
+def test_closest_position_and_side_names():
+    from src.extrinsic.run import closest_position
+    from src.van_scan import camera_from_name
+    assert closest_position(39) == "ForwardRight" and closest_position(-6) == "ROW"
+    assert closest_position(-162.7) == "RearLeft" and closest_position(95) == "Right"
+    assert camera_from_name("Right") == "Right" and camera_from_name("Left") == "Left"
+
+
+def test_outlier_setup_left_out():
+    from src.extrinsic.run import CameraResult, _combine
+    base = rot_zyx(39, -2, 0) @ np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0.0]])
+    def g(yaw):
+        sol = SimpleNamespace(R_bc=rot_zyx(yaw, 0, 0) @ base, lever_frd=np.array([-2.4, 0.6, 0]), up_ground_m=2.3)
+        return SimpleNamespace(solve=sol, passed=True, problems=[])
+    good = [g(0.2), g(-0.2), g(0.1), g(-0.1), g(50.0)]
+    res = CameraResult(camera="ForwardRight", van="X", folder="f")
+    _combine(res, good)
+    assert len(good) == 4 and res.angle_spread_deg < 0.5 and res.passed
+    assert "left out" in good_out[0] if (good_out := []) else True

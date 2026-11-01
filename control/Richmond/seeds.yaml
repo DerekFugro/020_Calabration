@@ -50,3 +50,23 @@ RearRight:
   - 1.003
   up_ground_m: 1.63
   source: mirror of RearLeft (approximate)
+Right:
+  R_bc_zyx_deg:
+  - 179.934
+  - 1.806
+  - 87.769
+  lever_fr_m:
+  - -2.0
+  - 1.0
+  up_ground_m: 2.3
+  source: ForwardRight turned to 90 deg (approximate)
+Left:
+  R_bc_zyx_deg:
+  - 0.066
+  - -1.806
+  - 87.769
+  lever_fr_m:
+  - -2.0
+  - -1.0
+  up_ground_m: 2.3
+  source: ForwardRight turned to 90 deg (approximate)
