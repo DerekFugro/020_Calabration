@@ -219,9 +219,13 @@ class SetupScreen(QWidget):
         self.filter_layout = QFormLayout()
         self.filter_layout.setSpacing(SPACING)
         self.filter_layout.addRow(self.board_group)
-        self.filter_layout.addRow(self.min_blur_label, self.min_blur_spin)
-        self.filter_layout.addRow(self.min_blur_hint)
-        self.filter_layout.addRow(self.move_unused_check)
+        # Min Blur Score removed (2026-11-01): dot boards use the dot-edge blur
+        # check; the chessboard keeps its built-in default.  Unusable photos are
+        # always moved to NotUsed.
+        for w in (self.min_blur_label, self.min_blur_spin, self.min_blur_hint, self.move_unused_check):
+            w.hide()
+        self.filter_layout.addRow(QLabel("Unusable photos (unreadable, no board, wrong size) are always "
+                                         "moved to a NotUsed folder; NotUsed\\why.txt lists each one."))
         self.filter_group.setLayout(self.filter_layout)
 
         # Main layout
@@ -265,23 +269,20 @@ class SetupScreen(QWidget):
                 roles.append(seed)
         self._loading = True                       # suppress role auto-fill
         self.role_combo.addItems(roles)
-        last_role = str(s.value(_KEY_ROLE, "") or "")
-        if last_role:
-            idx = self.role_combo.findText(last_role)
-            if idx >= 0:
-                self.role_combo.setCurrentIndex(idx)
-            else:
-                self.role_combo.setCurrentText(last_role)
+        # Start with no camera picked and no serial: the user must fill both in
+        # every time, so last session's camera can't slip onto new photos.
+        self.role_combo.setCurrentIndex(-1)
+        self.role_combo.setEditText("")
+        self.role_combo.lineEdit().setPlaceholderText("Pick the camera…")
         self._loading = False
 
         self.folder_input.setText(s.value(_KEY_FOLDER, ""))
-        self.serial_input.setText(s.value(_KEY_SERIAL, ""))
+        self.serial_input.clear()
         self.squares_x_spin.setValue(int(s.value(_KEY_SQUARES_X, DEFAULT_SQUARES_X)))
         self.squares_y_spin.setValue(int(s.value(_KEY_SQUARES_Y, DEFAULT_SQUARES_Y)))
         self.cell_width_spin.setValue(float(s.value(_KEY_CELL_W, DEFAULT_CELL_WIDTH_MM)))
         self.cell_height_spin.setValue(float(s.value(_KEY_CELL_H, DEFAULT_CELL_HEIGHT_MM)))
-        self.min_blur_spin.setValue(float(s.value(_KEY_MIN_BLUR, _DEFAULT_MIN_BLUR)))
-        self.move_unused_check.setChecked(str(s.value("filter/move_unused", "true")).lower() == "true")
+        self.min_blur_spin.setValue(_DEFAULT_MIN_BLUR)
         self._load_boards(str(s.value(_KEY_BOARD, AUTO_DETECT) or AUTO_DETECT))
         self._update_run_button()
 
@@ -335,14 +336,7 @@ class SetupScreen(QWidget):
             self.folder_input.setText(folder)
 
     def _on_role_changed(self, text: str) -> None:
-        """Fill in the serial remembered for this role (blank if new)."""
-        if getattr(self, "_loading", False):
-            return
-        from src.calibration_store import normalise_role
-        role = normalise_role(text)
-        remembered = self._role_serials.get(role, "")
-        if remembered and remembered != self.serial_input.text().strip():
-            self.serial_input.setText(remembered)
+        """The serial is never filled in from memory: the user types it each time."""
         self._update_run_button()
 
     def _on_inputs_changed(self) -> None:
@@ -417,8 +411,7 @@ class SetupScreen(QWidget):
         s.setValue(_KEY_SQUARES_Y, board.squares_y)
         s.setValue(_KEY_CELL_W,    board.cell_width_mm)
         s.setValue(_KEY_CELL_H,    board.cell_height_mm)
-        s.setValue(_KEY_MIN_BLUR,  self.min_blur_spin.value())
-        s.setValue("filter/move_unused", "true" if self.move_unused_check.isChecked() else "false")
+
         s.setValue(_KEY_BOARD,     self.board_combo.currentData() or AUTO_DETECT)
 
     @property
@@ -429,12 +422,12 @@ class SetupScreen(QWidget):
 
     @property
     def move_unused(self) -> bool:
-        return self.move_unused_check.isChecked()
+        return True                      # always (Derek, 2026-11-01)
 
     @property
     def min_blur_score(self) -> float:
         """Current blur threshold set by the user."""
-        return self.min_blur_spin.value()
+        return _DEFAULT_MIN_BLUR         # setting removed; chessboard default
 
     def reload_boards(self) -> None:
         """Boards tab added or re-measured a board: reload the list."""

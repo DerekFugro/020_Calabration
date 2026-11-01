@@ -80,7 +80,8 @@ class VanIntrinsicScreen(QWidget):
         self.stop_btn = QPushButton("Stop"); self.stop_btn.setEnabled(False)
         run = QHBoxLayout()
         run.addWidget(QLabel("Use")); run.addWidget(self.max_spin); run.addWidget(QLabel("per camera"))
-        run.addSpacing(20); run.addWidget(self.move_check)
+        self.move_check.hide()           # always on (Derek, 2026-11-01)
+        run.addSpacing(20); run.addWidget(QLabel("Unusable photos go to NotUsed"))
         run.addStretch(1)
         run.addWidget(self.grade_all_btn); run.addWidget(self.grade_sel_btn); run.addWidget(self.stop_btn)
 
@@ -169,7 +170,7 @@ class VanIntrinsicScreen(QWidget):
             return
         from src.workers import VanIntrinsicWorker
         self._worker = VanIntrinsicWorker(jobs, self.max_spin.value(), parent=self,
-                                          move_unused=self.move_check.isChecked())
+                                          move_unused=True)
         self._worker.row_started.connect(lambda r, t: self._set_grade_cell(r, "working…", None))
         self._worker.row_progress.connect(lambda r, t: self._set_grade_cell(r, t + "…", None))
         self._worker.row_finished.connect(self._row_done)
