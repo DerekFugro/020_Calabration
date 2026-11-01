@@ -27,10 +27,12 @@ import yaml
 from src.extrinsic.control import US_FT
 from src.extrinsic.solve import ENU2NED, pointing, rot_mean, rot_zyx
 
-EOP_NOTE = ("EOP header lines 4-6 = camera X, Y, Z in control units (US ft) and 7-9 = photogrammetric "
-            "angles, matched against the old exe's files to 0.1-0.3 deg. Lines 1-3 hold values whose "
-            "meaning is not known yet (the old files have 1000/515/1485 on one van, -4753/130/5542 on "
-            "another); they are written as 0.")
+EOP_NOTE = ("EOP header: lines 1-3 = principal point x, y and focal length (px), lines 4-6 = camera X, Y, Z "
+            "in control units (US ft), 7-9 = photogrammetric angles. Lines 4-9 match the old exe's files; "
+            "lines 1-3 are inferred (2026-11-01, 664 old EOPs: their medians sit at the image centre, and "
+            "solving with them puts the camera within 0.45 ft of lines 4-6, against 1.7 ft with the "
+            "camera's own calibration), so they are the old exe's per-setup lens solve. We write our "
+            "calibrated values there.")
 RWC_NOTE = ("PGExteriorCalibration angles use the best rule found from 26 old RWC files (rear cameras "
             "agreed within 0.3-2 deg, forward cameras did not): NOT VERIFIED. UpLeverArm is written the "
             "old way (camera height, NAVD88, m); the real camera height above the pavement is in the "
@@ -75,7 +77,7 @@ def rwc_angles(cam) -> tuple[float, float, float]:
 
 # ── per-setup files ──────────────────────────────────────────────────────────
 
-def write_eop(sr, site, path: Path) -> None:
+def write_eop(sr, site, path: Path, K=None) -> None:
     s, sol, m = sr.setup, sr.solve, sr.match
     o_ft = site.enh_m / US_FT
     idx = site.index()
@@ -91,7 +93,8 @@ def write_eop(sr, site, path: Path) -> None:
     cam_ft = sol.cam_enh / US_FT if sol else np.zeros(3)
     ang = opk(sol.R_wc) if sol else (0, 0, 0)
     stem = Path(s.photo).stem
-    L = ["0.000000"] * 3 + [f"{v:.6f}" for v in cam_ft] + [f"{v:.6f}" for v in ang]
+    lens = [K[0, 2], K[1, 2], (K[0, 0] + K[1, 1]) / 2] if K is not None else [0.0, 0.0, 0.0]
+    L = [f"{v:.6f}" for v in lens] + [f"{v:.6f}" for v in cam_ft] + [f"{v:.6f}" for v in ang]
     L += ["", str(Path(s.folder) / stem), "", str(len(rows)), "",
           "PhotoID     \tPointID     \t      Xg   \t          Yg    \t      Zg      \t      Xp    \t     Yp    \t Status", ""]
     for pid, x, y, st in rows:
@@ -209,7 +212,7 @@ def export_camera(cam, site, serial: str, intrinsic_source: str, camera_view: st
         d.mkdir(exist_ok=True)
         pid = Path(sr.setup.photo).stem
         if sr.solve is not None:
-            write_eop(sr, site, d / f"{pre}{pid}.EOP")
+            write_eop(sr, site, d / f"{pre}{pid}.EOP", cam.K)
         img = overlay(sr, site, cam.K, cam.D)
         if img is not None:
             cv2.imwrite(str(d / f"{pre}{pid}_targets.png"), img)
