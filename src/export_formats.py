@@ -63,10 +63,13 @@ class Intrinsics:
     images_used: int = 0
     board: str = ""
     date: datetime = field(default_factory=datetime.now)
+    image_folder: str = ""
+    photos_left_out: int = 0
 
     @classmethod
     def from_result(cls, cal, van: str, camera: str, serial: str,
-                    board: str = "", date: datetime | None = None) -> "Intrinsics":
+                    board: str = "", date: datetime | None = None,
+                    image_folder: str = "") -> "Intrinsics":
         K = cal.camera_matrix
         d = list(cal.dist_coeffs.ravel()) + [0.0] * 5
         g = getattr(cal, "grade", None)
@@ -82,7 +85,9 @@ class Intrinsics:
                    grade_headline="" if g is None else g.headline,
                    repeat_10m_mm=None if rp is None else float(rp.at_10m_mm),
                    images_used=int(cal.image_count_used), board=board,
-                   date=date or datetime.now())
+                   date=date or datetime.now(),
+                   image_folder=str(image_folder),
+                   photos_left_out=len(getattr(cal, "auto_removed", []) or []))
 
     @property
     def stem(self) -> str:
@@ -218,7 +223,7 @@ def json_text(c: Intrinsics) -> str:
 
 CSV_COLS = ["van", "camera", "serial", "width", "height", "fx", "fy", "cx", "cy",
             "k1", "k2", "p1", "p2", "k3", "rms_px", "repeat_10m_mm", "passed",
-            "images_used", "board", "date"]
+            "images_used", "board", "date", "image_folder"]
 
 
 def csv_text(c: Intrinsics) -> str:
@@ -269,6 +274,8 @@ def export_all(c: Intrinsics, out_dir: str | Path) -> list[Path]:
     lines = [f"{c.van} {c.camera} serial {c.serial}  —  {c.date:%Y-%m-%d %H:%M}",
              f"Grade: {c.grade_headline or 'not graded'}",
              f"RMS {c.rms_px:.3f} px, {c.images_used} photos, board {c.board}",
+             f"Image folder: {c.image_folder or '(not recorded)'}"
+             + (f"  ({c.photos_left_out} photos left out automatically)" if c.photos_left_out else ""),
              "" if c.repeat_10m_mm is None else
              f"Repeatability: about {c.repeat_10m_mm:.1f} mm at 10 m",
              "", "Files:"]

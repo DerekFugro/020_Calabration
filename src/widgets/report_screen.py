@@ -78,6 +78,10 @@ class ReportScreen(QWidget):
         self.verdict_badge.setFixedHeight(_BADGE_H)
 
         # Grade banner (src/grading.py): pass/fail + what to shoot next
+        self.folder_label  = QLabel("")
+        self.folder_label.setWordWrap(True)
+        self.folder_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.folder_label.setStyleSheet("color: rgb(170,170,170); font-size: 9pt;")
         self.grade_banner  = QLabel("")
         self.grade_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.grade_banner.setWordWrap(True)
@@ -259,6 +263,7 @@ class ReportScreen(QWidget):
         self.main_layout.setSpacing(SPACING)
         self.main_layout.addWidget(self.title_label)
         self.main_layout.addWidget(self.verdict_badge)
+        self.main_layout.addWidget(self.folder_label)
         self.main_layout.addWidget(self.grade_banner)
         self.main_layout.addWidget(self.scroll_area, stretch=1)
         self.main_layout.addLayout(self.button_layout)
@@ -333,8 +338,11 @@ class ReportScreen(QWidget):
         cal_result: CalibrationResult,
         quality: QualityReport,
         board_config: BoardConfig,
+        image_folder: str = "",
     ) -> None:
         """Called by MainWindow after calibration completes."""
+        from src.photo_folders import folder_lines
+        self.folder_label.setText("\n".join(folder_lines(cal_result, image_folder)))
         self._update_verdict(quality)
         self._update_summary(cal_result, quality)
         self._update_matrix(cal_result.camera_matrix)

@@ -132,7 +132,8 @@ def main(argv: list[str] | None = None) -> int:
         from src.export_formats import Intrinsics, export_all
         from src.van_scan import camera_from_name
         cam = camera_from_name(a.role) or a.role
-        files = export_all(Intrinsics.from_result(cal, a.van.upper(), cam, a.serial, board=board.name), a.export)
+        files = export_all(Intrinsics.from_result(cal, a.van.upper(), cam, a.serial, board=board.name,
+                                                  image_folder=os.path.abspath(a.folder)), a.export)
         print(f"Wrote {len(files)} files to {a.export}" + ("" if cal.grade.passed else "  (NOT_PASSED_ prefix)"))
 
     if a.save:

@@ -295,7 +295,8 @@ class VanIntrinsicScreen(QWidget):
         for r in rows:
             run = self._runs[r]
             c = Intrinsics.from_result(run.cal, self._cell(r, C_VAN), self._cell(r, C_CAM),
-                                       self._cell(r, C_SER), board=run.board.name, date=dt)
+                                       self._cell(r, C_SER), board=run.board.name, date=dt,
+                                       image_folder=run.folder)
             out = os.path.join(run.folder, f"Calibration_{dt:%Y%m%d_%H%M%S}")
             export_all(c, out)
             out_dirs.append(out)

@@ -23,6 +23,8 @@ from datetime import datetime
 from pathlib import Path
 
 import yaml
+
+from src.photo_folders import folder_lines as _folder_lines, folder_summary as _folder_summary
 from fpdf import FPDF
 
 from src.board import BoardConfig
@@ -101,6 +103,7 @@ def write_yaml(
         "rms_reprojection_error":   round(float(cal_result.rms), 6),
         "image_count_used":         cal_result.image_count_used,
         "verdict":                  quality.verdict,
+        "photos":                   _folder_summary(cal_result, folder),
         "camera_matrix": {
             "rows": 3,
             "cols": 3,
@@ -347,6 +350,9 @@ def write_pdf(
              f"Generated: {dt.strftime('%Y-%m-%d  %H:%M:%S')}    "
              f"Camera Serial: {serial}",
              align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", size=8)
+    for line in _folder_lines(cal_result, folder):
+        pdf.multi_cell(_CW, 4.2, _ascii(line), align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3)
 
     # ── Verdict badge ──────────────────────────────────────────────────────

@@ -14,6 +14,8 @@ operator only retypes a serial when the camera actually changes.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
@@ -129,7 +131,7 @@ class SetupScreen(QWidget):
         self.serial_input.setFixedHeight(INPUT_H)
 
         # Board parameters group
-        self.board_group        = QGroupBox("Board Parameters")
+        self.board_group        = QGroupBox("Board (leave on Auto-detect; boards are added in the Boards tab)")
         self.board_label        = QLabel("Board:")
         self.board_combo        = QComboBox()
         self.board_combo.setFixedHeight(INPUT_H)
@@ -203,20 +205,20 @@ class SetupScreen(QWidget):
         self.board_layout.addWidget(self.board_label,       0, 0)
         self.board_layout.addWidget(self.board_combo,       0, 1, 1, 3)
         self.board_layout.addWidget(self.board_hint,        1, 0, 1, 5)
-        self.board_layout.addWidget(self.squares_x_label,   2, 0)
-        self.board_layout.addWidget(self.squares_x_spin,    2, 1)
-        self.board_layout.addWidget(self.squares_y_label,   2, 2)
-        self.board_layout.addWidget(self.squares_y_spin,    2, 3)
-        self.board_layout.addWidget(self.cell_width_label,  3, 0)
-        self.board_layout.addWidget(self.cell_width_spin,   3, 1)
-        self.board_layout.addWidget(self.cell_height_label, 3, 2)
-        self.board_layout.addWidget(self.cell_height_spin,  3, 3)
+        # Board sizes are not typed here any more: every board, chessboard
+        # included, comes from its Cal_board folder (Boards tab).  The spin
+        # boxes stay as hidden widgets only so old settings still load.
+        for w in (self.squares_x_label, self.squares_x_spin, self.squares_y_label,
+                  self.squares_y_spin, self.cell_width_label, self.cell_width_spin,
+                  self.cell_height_label, self.cell_height_spin):
+            w.hide()
         self.board_layout.setColumnStretch(4, 1)   # absorb remaining space
         self.board_group.setLayout(self.board_layout)
 
         # Filter params layout
         self.filter_layout = QFormLayout()
         self.filter_layout.setSpacing(SPACING)
+        self.filter_layout.addRow(self.board_group)
         self.filter_layout.addRow(self.min_blur_label, self.min_blur_spin)
         self.filter_layout.addRow(self.min_blur_hint)
         self.filter_layout.addRow(self.move_unused_check)
@@ -228,7 +230,6 @@ class SetupScreen(QWidget):
         self.main_layout.setSpacing(SPACING)
         self.main_layout.addWidget(self.folder_group)
         self.main_layout.addWidget(self.camera_group)
-        self.main_layout.addWidget(self.board_group)
         self.main_layout.addWidget(self.filter_group)
         self.main_layout.addStretch()
         self.main_layout.addWidget(self.run_button)
@@ -311,18 +312,14 @@ class SetupScreen(QWidget):
 
     def _on_board_changed(self, *_args) -> None:
         b = self._selected_board()
-        chess = b is None or not b.is_dots
-        for w in (self.squares_x_spin, self.squares_y_spin,
-                  self.cell_width_spin, self.cell_height_spin):
-            w.setEnabled(chess)
         if b is None:
-            text = ("The board is picked from sample images.  The squares and "
-                    "cell size below are used if it is the chessboard.")
+            text = "Auto-detect picks the board from a few photos"
         elif b.is_dots:
-            text = f"Dot layout: {b.layout_csv}"
+            text = f"{b.num_corners} dots, layout {Path(b.layout_csv).name}"
         else:
-            text = "Chessboard: set the squares and cell size below."
-        text += f"  Library: {self._library_dir}"
+            text = (f"Chessboard {b.squares_x}x{b.squares_y}, cell {b.cell_width_mm:.2f} x "
+                    f"{b.cell_height_mm:.2f} mm")
+        text += f".  Library: {self._library_dir}"
         if self._board_errors:
             text += "  Skipped: " + "; ".join(self._board_errors)
         self.board_hint.setText(text)
@@ -370,9 +367,7 @@ class SetupScreen(QWidget):
         serial = self.serial_input.text().strip()
         board  = self._chessboard_from_spins()
         self._save_settings(folder, serial, board, self.camera_role)
-        chosen = self._selected_board()
-        if chosen is not None and not chosen.is_dots:
-            chosen = self._chessboard_from_spins(chosen.name, chosen.folder)
+        chosen = self._selected_board()          # library board as measured, or None = Auto-detect
         self.run_requested.emit(folder, serial, chosen)   # None = Auto-detect
 
     def _chessboard_from_spins(self, name: str = "", folder: str = "") -> BoardConfig:
@@ -391,8 +386,7 @@ class SetupScreen(QWidget):
     @property
     def board_candidates(self) -> list[BoardConfig]:
         """Boards Auto-detect chooses from (chessboards use the spin boxes)."""
-        return [b if b.is_dots else self._chessboard_from_spins(b.name, b.folder)
-                for b in self._boards]
+        return list(self._boards)
 
     def _save_settings(
         self,

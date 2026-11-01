@@ -197,7 +197,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         self._cal_result = cal_result
         self._quality    = quality
-        self.report_screen.set_data(cal_result, quality, self._board_config)
+        self.report_screen.set_data(cal_result, quality, self._board_config, self._image_folder)
         self.stack.setCurrentIndex(2)
         self.statusBar().showMessage(
             f"Calibration complete — RMS {cal_result.rms:.4f} px  "
@@ -275,7 +275,8 @@ class MainWindow(QMainWindow):
         try:
             from src.export_formats import Intrinsics, export_all
             c = Intrinsics.from_result(self._cal_result, self.van, cam, self._serial,
-                                       board=self._board_config.name, date=dt)
+                                       board=self._board_config.name, date=dt,
+                                       image_folder=self._image_folder)
             out = Path(self._image_folder) / f"Calibration_{dt:%Y%m%d_%H%M%S}"
             files = export_all(c, out)
             return f"\n\nAll formats ({len(files)} files) in:\n{out}"
@@ -327,7 +328,7 @@ class MainWindow(QMainWindow):
         self._detections, self._filter_results = detections, filter_results
         self._cal_result, self._quality = cal_result, quality
         self.setup_screen.set_inputs(folder, role, serial)
-        self.report_screen.set_data(cal_result, quality, board)
+        self.report_screen.set_data(cal_result, quality, board, folder)
         self.stack.setCurrentIndex(2)
         self.statusBar().showMessage(f"{role} {serial}: {cal_result.grade.headline}")
 
