@@ -419,3 +419,12 @@ them touches `detector.py`, `calibrator.py`, and four test files.
   go into board.yaml and are applied when the board loads. Chessboard: squares and cell size, then
   measure full width and height. *Test* runs auto-detect on a few photos. Older dot boards: *Make PDF
   with A-B / C-D marks* writes `<name>_measure.pdf` without touching the original PDF.
+- **Load Extrinsic tab (Old School, version 1)**: pick the van's Old School folder. For each camera it
+  needs a passed intrinsic (from Load Intrinsic this session, or a CAL_*.yaml / *_intrinsic_cal.xml).
+  It finds the wall discs and tennis balls itself (old EOP clicks only seed the search), works out
+  which target is which, drops wrong targets, solves each setup and combines them: pan/tilt/roll of
+  the camera on the van, height above the pavement, and forward/right lever arms from VBS (rough).
+  Control is always the tennis-ball survey in `control/Richmond` (grid vs true north handled; ITRF to
+  NAD83(2011) for the van position). *Save all formats* writes EOP + overlay per setup, YAML, JSON,
+  CSV, PDF and PGExteriorCalibration RWC (angles unverified) into `Extrinsic_<date>` in the camera
+  folder. Pass rules are in `src/extrinsic/run.py`.

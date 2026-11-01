@@ -3,3 +3,4 @@ opencv-contrib-python>=4.13.0.92
 fpdf2>=2.8.7
 pyyaml>=6.0
 pytest>=9.0.3
+pyproj>=3.6

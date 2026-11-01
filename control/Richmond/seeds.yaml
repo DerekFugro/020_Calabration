@@ -1,0 +1,52 @@
+# Default starting guess per camera position (where it sits and looks on the van).
+# Only used to start the target search when a setup has no old clicks and no other setup is solved.
+ForwardRight:
+  R_bc_zyx_deg:
+  - 129.004
+  - 1.806
+  - 87.769
+  lever_fr_m:
+  - -2.383
+  - 0.597
+  up_ground_m: 2.307
+  source: ARAN65 2024-12-05 Old School
+ROW:
+  R_bc_zyx_deg:
+  - 83.604
+  - -1.038
+  - 88.452
+  lever_fr_m:
+  - -1.772
+  - 0.224
+  up_ground_m: 2.316
+  source: ARAN65 2024-12-05 Old School
+RearLeft:
+  R_bc_zyx_deg:
+  - -72.663
+  - -1.959
+  - 89.015
+  lever_fr_m:
+  - -5.607
+  - -1.003
+  up_ground_m: 1.63
+  source: ARAN65 2024-12-05 Old School
+ForwardLeft:
+  R_bc_zyx_deg:
+  - 50.996
+  - -1.806
+  - 87.769
+  lever_fr_m:
+  - -2.383
+  - -0.597
+  up_ground_m: 2.307
+  source: mirror of ForwardRight (approximate)
+RearRight:
+  R_bc_zyx_deg:
+  - -107.337
+  - 1.959
+  - 89.015
+  lever_fr_m:
+  - -5.607
+  - 1.003
+  up_ground_m: 1.63
+  source: mirror of RearLeft (approximate)

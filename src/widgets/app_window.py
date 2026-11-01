@@ -62,15 +62,10 @@ class AppWindow(QMainWindow):
             "Live 3x3 grid: each area turns green once it has enough points and tilt.",
             "Stops asking for photos when the grade passes.",
         ]), "Capture Intrinsic")
-        self.tabs.addTab(_planned("Load Extrinsic — next to build", [
-            "Load Old School setups (EOP + GCP + _Processed.csv) for each camera.",
-            "Uses the passed intrinsic for that camera from Load Intrinsic.",
-            "Checks: which GCP file was used (revised file is corrected to the "
-            "tennis-ball file), wrong or swapped target labels, GPS spread "
-            "between setups.",
-            "Solves camera angles and lever arms, grades them, and writes EOP, "
-            "PGExteriorCalibration RWC, XML, YAML, CSV and PDF.",
-        ]), "Load Extrinsic")
+        from src.widgets.extrinsic_screen import ExtrinsicScreen
+        self.extrinsic = ExtrinsicScreen(intrinsic_provider=self._intrinsic_for)
+        self.extrinsic.status.connect(self.statusBar().showMessage)
+        self.tabs.addTab(self.extrinsic, "Load Extrinsic")
         self.tabs.addTab(_planned("Capture Extrinsic — planned", [
             "The app runs the static setup: finds the targets in each photo "
             "itself instead of clicking.",
@@ -92,6 +87,17 @@ class AppWindow(QMainWindow):
         self.van_screen.status.connect(self._status)
         self.van_screen.open_requested.connect(self._open_in_single)
         self.van_edit.textChanged.connect(lambda t: setattr(self.single, "van", t.strip()))
+
+    def _intrinsic_for(self, camera: str):
+        """A passed intrinsic for this camera from the Whole van table, or None."""
+        from src.extrinsic.intrinsic_source import from_run
+        vs = self.van_screen
+        for r, run in vs._runs.items():
+            if vs._cell(r, 0) == camera:
+                got = from_run(run, vs._cell(r, 1))
+                if got is not None:
+                    return got
+        return None
 
     def _status(self, text: str) -> None:
         self.statusBar().showMessage(text)

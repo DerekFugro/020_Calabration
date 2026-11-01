@@ -1,0 +1,8 @@
+# Richmond Old School site (Derek's tennis-ball survey).  The revised control file is never used.
+name: Richmond
+gcp_file: RichmondTennisClick.gcp
+horizontal_crs: 6595          # NAD83(2011) / Virginia South (ftUS)  [realisation assumed; survey report not on file]
+units: us_survey_ft
+vertical_datum: NAVD88
+geoid_separation_m: -32.89    # GEOID18 at the site (NGS), ellipsoid h = H + N
+ground_max_z_ft: 207.0        # points at or below this are on the pavement (tennis balls)
