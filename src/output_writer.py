@@ -161,6 +161,8 @@ def write_yaml(
             "layout_file":    Path(board_config.layout_csv).name,
             "label_on_board": board_config.label,
             "dots":           board_config.num_corners,
+            "print_measured": bool(getattr(board_config, "print_measured", False)),
+            "print_scale_xy": [float(v) for v in getattr(board_config, "print_scale", (1.0, 1.0))],
         }
         payload["detection_method"] = "dot_centroid"
         payload["point_count_used"] = int(cal_result.point_count_used)

@@ -125,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
 
     from src.grading import grade
     cal.grade = grade(cal)
+    from src.grading import board_warning
+    board_warning(cal.grade, board)
     print()
     print(cal.grade.as_text())
 

@@ -70,16 +70,23 @@ def load_board_folder(folder: str | Path) -> BoardConfig:
         if (sx, sy) != (1.0, 1.0):
             b.dot_xy_mm = b.dot_xy_mm * [sx, sy]
             b.dot_radius_mm = b.dot_radius_mm * (sx + sy) / 2
+        m = spec.get("measure") or {}
+        b.print_measured = m.get("AB_measured_mm") is not None and m.get("CD_measured_mm") is not None
+        b.print_scale = (sx, sy)
         return b
 
     if kind == KIND_CHESSBOARD:
-        return BoardConfig(
+        b = BoardConfig(
             squares_x=int(spec.get("squares_x", DEFAULT_SQUARES_X)),
             squares_y=int(spec.get("squares_y", DEFAULT_SQUARES_Y)),
             cell_width_mm=float(spec.get("cell_width_mm", DEFAULT_CELL_WIDTH_MM)),
             cell_height_mm=float(spec.get("cell_height_mm", DEFAULT_CELL_HEIGHT_MM)),
             kind=KIND_CHESSBOARD, name=name, folder=str(folder),
         )
+        # Chessboard sizes are typed from a measurement (calipers / Boards tab);
+        # a board added in the Boards tab says measured: false until measured.
+        b.print_measured = spec.get("measured", True) is not False
+        return b
 
     raise ValueError(f"{spec_path}: type must be 'chessboard' or 'dots', got {kind!r}.")
 

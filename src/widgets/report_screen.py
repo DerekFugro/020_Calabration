@@ -373,6 +373,11 @@ class ReportScreen(QWidget):
                          f"({rp.est_error_p95_mrad:.2f} mrad). Limit 10 mm.")
         parts += [f"<b>STOP:</b> {html.escape(s)}" for s in g.hard_stops]
         parts += [f"&bull; {html.escape(r)}" for r in g.reasons]
+        parts += [f"<span style='color:#e0b050'>&#9888; {html.escape(w)}</span>"
+                  for w in getattr(g, "warnings", [])]
+        bl = getattr(g, "blur_median_px", float("nan"))
+        if bl == bl:
+            parts.append(f"<b>Sharpness:</b> dot edge blur {bl:.1f} px (sharp is about 1 px).")
         if g.coaching:
             parts.append("<b>What to do:</b>")
             parts += [f"&nbsp;&nbsp;&rarr; {html.escape(c)}" for c in g.coaching]

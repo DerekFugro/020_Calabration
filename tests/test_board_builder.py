@@ -84,3 +84,56 @@ def test_measure_pdf_for_old_board(tmp_path):
     assert out.name == "old_measure.pdf" and out.exists()
     spec = yaml.safe_load((f / "board.yaml").read_text())
     assert spec["measure"]["AB_nominal_mm"] > 0 and spec["layout_csv"] == "l.csv"
+
+
+def _nominals(folder):
+    return bb.nominal_lengths(folder)[1:]
+
+
+def test_record_saves_good_readings_and_keeps_history(tmp_path):
+    folder = bb.create_dot_board("tb", IKEA, library=tmp_path)
+    ab, cd = _nominals(folder)
+    ok, msg = bb.record_measurement(folder, [ab * 1.003, ab * 1.003 + 0.5], [cd, cd + 0.4])
+    assert ok and "Saved" in msg
+    spec = yaml.safe_load((folder / "board.yaml").read_text())
+    assert spec["measure"]["AB_measured_mm"] == pytest.approx(ab * 1.003 + 0.25)
+    assert load_board_folder(folder).print_measured
+    ok, _ = bb.record_measurement(folder, [ab, ab], [cd, cd])
+    spec = yaml.safe_load((folder / "board.yaml").read_text())
+    assert ok and len(spec["measure_history"]) == 1
+
+
+@pytest.mark.parametrize("ab_off,ab_spread,cd_off,word", [
+    (0.0, 3.0, 0.0, "differ"),          # two readings disagree
+    (0.05, 0.0, 0.0, "file says"),       # 5% off: wrong dots or scaled print
+    (0.0, 0.0, -0.03, "file says"),
+])
+def test_record_refuses_bad_readings(tmp_path, ab_off, ab_spread, cd_off, word):
+    folder = bb.create_dot_board("tb", IKEA, library=tmp_path)
+    ab, cd = _nominals(folder)
+    ok, msg = bb.record_measurement(folder, [ab * (1 + ab_off), ab * (1 + ab_off) + ab_spread],
+                                    [cd * (1 + cd_off)] * 2)
+    assert not ok and word in msg
+    spec = yaml.safe_load((folder / "board.yaml").read_text())
+    assert spec["measure"]["AB_measured_mm"] is None and spec["scale_x"] == 1.0
+    assert not load_board_folder(folder).print_measured
+
+
+def test_record_needs_two_readings(tmp_path):
+    folder = bb.create_dot_board("tb", IKEA, library=tmp_path)
+    ok, msg = bb.record_measurement(folder, [1000.0, 0], [500.0, 500.0])
+    assert not ok and "two readings" in msg
+
+
+def test_same_layout_twice_is_refused(tmp_path):
+    bb.create_dot_board("first", IKEA, library=tmp_path)
+    with pytest.raises(FileExistsError, match="already in the library as first"):
+        bb.create_dot_board("second", IKEA, library=tmp_path)
+
+
+def test_unmeasured_board_warns_in_grade(tmp_path):
+    from src.grading import GradeReport, board_warning
+    folder = bb.create_dot_board("tb", IKEA, library=tmp_path)
+    rep = GradeReport(passed=True, headline="")
+    board_warning(rep, load_board_folder(folder))
+    assert rep.passed and any("not been measured" in w for w in rep.warnings)

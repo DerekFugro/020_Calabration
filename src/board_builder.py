@@ -200,6 +200,9 @@ def create_dot_board(name: str, csv_path, label: str = "",
     folder = Path(library or CAL_BOARD_DIR) / safe_name(name)
     if folder.exists():
         raise FileExistsError(f"A board folder called {folder.name} already exists.")
+    same = find_same_layout(csv_path, library)
+    if same:
+        raise FileExistsError(f"This layout is already in the library as {same}.")
     folder.mkdir(parents=True)
     csv_name = safe_name(Path(csv_path).stem) + ".csv"
     shutil.copy2(csv_path, folder / csv_name)
@@ -227,7 +230,8 @@ def create_chessboard(name: str, squares_x: int, squares_y: int, cell_w: float, 
     _write_spec(folder, {"name": name, "type": "chessboard", "squares_x": int(squares_x),
                          "squares_y": int(squares_y), "cell_width_mm": float(cell_w),
                          "cell_height_mm": float(cell_h), "added": date.today().isoformat(),
-                         "page_mm": [W, H], "measured": False})
+                         "page_mm": [W, H], "measured": False,
+                         "design_cell_mm": [float(cell_w), float(cell_h)]})
     return folder
 
 
@@ -252,6 +256,79 @@ def make_measure_pdf(folder) -> Path:
     spec.setdefault("scale_x", 1.0); spec.setdefault("scale_y", 1.0)
     _write_spec(folder, spec)
     return out
+
+
+READING_TOL_MM = 2.0      # two readings of one distance must agree this well
+MAX_OFF_SHARE = 0.02      # a print more than 2% off the file = wrong dots or a scaled print
+
+
+def nominal_lengths(folder) -> tuple[str, float, float]:
+    """(kind, first, second): dots -> A-B, C-D; chessboard -> full width, height (mm)."""
+    folder = Path(folder)
+    spec = _read_spec(folder)
+    if spec.get("type") == "chessboard":
+        w = spec.get("design_cell_mm", [spec["cell_width_mm"], spec["cell_height_mm"]])
+        return "chessboard", int(spec["squares_x"]) * float(w[0]), int(spec["squares_y"]) * float(w[1])
+    xy, _ = load_dot_layout(folder / spec["layout_csv"])
+    p = measure_pairs(xy)
+    return "dots", p["AB"][2], p["CD"][2]
+
+
+def record_measurement(folder, first: list[float], second: list[float]) -> tuple[bool, str]:
+    """Check two readings of each distance and save them if they make sense.
+
+    Nothing is saved unless both readings of each distance agree within
+    READING_TOL_MM and their average is within MAX_OFF_SHARE of the file.
+    A previous measurement is kept in board.yaml under measure_history.
+    """
+    folder = Path(folder)
+    kind, n1, n2 = nominal_lengths(folder)
+    names = ("A-B", "C-D") if kind == "dots" else ("width", "height")
+    means = []
+    for name, nom, rd in zip(names, (n1, n2), (first, second)):
+        rd = [float(v) for v in rd if v and v > 0]
+        if len(rd) < 2:
+            return False, f"Enter two readings of {name}."
+        spread = max(rd) - min(rd)
+        if spread > READING_TOL_MM:
+            return False, (f"The two {name} readings differ by {spread:.1f} mm. Measure {name} again "
+                           f"(they should agree within {READING_TOL_MM:g} mm).")
+        mean = sum(rd) / len(rd)
+        off = mean / nom - 1
+        if abs(off) > MAX_OFF_SHARE:
+            return False, (f"{name} is {mean:.1f} mm but the file says {nom:.1f} mm ({off:+.1%}). "
+                           "Check you measured centre to centre between the right marks, and that the "
+                           "print was not scaled. Nothing saved.")
+        means.append(mean)
+    before = _read_spec(folder)
+    a, c = save_measurement(folder, means[0], means[1])
+    old = before.get("measure") if kind == "dots" else before.get("measured")
+    if isinstance(old, dict) and (old.get("AB_measured_mm") or old.get("width_mm")):
+        spec = _read_spec(folder)
+        spec.setdefault("measure_history", []).append(old)
+        _write_spec(folder, spec)
+    if kind == "dots":
+        return True, (f"Saved. {names[0]} {means[0]:.1f} mm ({means[0] / n1 - 1:+.2%}), {names[1]} "
+                      f"{means[1]:.1f} mm ({means[1] / n2 - 1:+.2%}). Scale X {a:.5f}, Y {c:.5f}.")
+    return True, f"Saved. Cell {a:.3f} x {c:.3f} mm."
+
+
+def find_same_layout(csv_path, library=None) -> str:
+    """Name of a library board with the same dot layout, or ''."""
+    from src.boards import list_boards
+    try:
+        xy, r = load_dot_layout(csv_path)
+    except Exception:  # noqa: BLE001
+        return ""
+    for b in list_boards(library) if library else list_boards():
+        if b.is_dots and b.layout_csv:
+            try:
+                xy2, r2 = load_dot_layout(b.layout_csv)
+            except Exception:  # noqa: BLE001
+                continue
+            if xy2.shape == xy.shape and np.allclose(xy2, xy, atol=0.01) and np.allclose(r2, r, atol=0.01):
+                return b.name
+    return ""
 
 
 def save_measurement(folder, ab_mm: float, cd_mm: float) -> tuple[float, float]:

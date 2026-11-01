@@ -68,16 +68,19 @@ class BoardsTab(QWidget):
         af.addRow("Type:", self.type_combo); af.addRow("Name:", self.name_edit)
         af.addRow(self.kind_stack); af.addRow(self.add_btn)
 
-        # 2. Measure
+        # 2. Measure — saved by itself once all four readings make sense
         self.measure_help = QLabel("Pick a board on the left."); self.measure_help.setWordWrap(True)
-        self.m1 = _mm_spin(); self.m2 = _mm_spin()
-        self.m1_label = QLabel("A-B measured:"); self.m2_label = QLabel("C-D measured:")
-        self.measure_btn = QPushButton("Save measurement")
+        self.r = [_mm_spin() for _ in range(4)]
+        for sp in self.r:
+            sp.setSpecialValueText("—")          # 0 = not entered; never pre-filled
+        self.m1_label = QLabel("A-B, two readings:"); self.m2_label = QLabel("C-D, two readings:")
+        row1 = QHBoxLayout(); row1.addWidget(self.r[0]); row1.addWidget(self.r[1])
+        row2 = QHBoxLayout(); row2.addWidget(self.r[2]); row2.addWidget(self.r[3])
+        self.measure_status = QLabel(""); self.measure_status.setWordWrap(True)
         self.mpdf_btn = QPushButton("Make PDF with A-B / C-D marks")
-        meas = QGroupBox("2. Print it at 100%, then measure the print"); mf = QFormLayout(meas)
-        mf.addRow(self.measure_help); mf.addRow(self.m1_label, self.m1); mf.addRow(self.m2_label, self.m2)
-        mrow = QHBoxLayout(); mrow.addWidget(self.mpdf_btn); mrow.addWidget(self.measure_btn)
-        mf.addRow(mrow)
+        meas = QGroupBox("2. Print it at 100%, then measure the print twice"); mf = QFormLayout(meas)
+        mf.addRow(self.measure_help); mf.addRow(self.m1_label, row1); mf.addRow(self.m2_label, row2)
+        mf.addRow(self.measure_status); mf.addRow(self.mpdf_btn)
 
         # 3. Test
         self.test_btn = QPushButton("Pick photos of this board and test auto-detect…")
@@ -96,7 +99,8 @@ class BoardsTab(QWidget):
         self.csv_edit.editingFinished.connect(self._check_csv)
         self.add_btn.clicked.connect(self._add)
         self.list.currentRowChanged.connect(self._on_select)
-        self.measure_btn.clicked.connect(self._measure)
+        for sp in self.r:
+            sp.editingFinished.connect(self._measure)
         self.mpdf_btn.clicked.connect(self._make_measure_pdf)
         self.test_btn.clicked.connect(self._test)
         self.open_btn.clicked.connect(self._open_folder)
@@ -165,38 +169,34 @@ class BoardsTab(QWidget):
         b = self._current()
         if b is None:
             return
+        for sp in self.r:
+            sp.blockSignals(True); sp.setValue(0.0); sp.blockSignals(False)
+        self.measure_status.setText("")
         try:
             spec = bb._read_spec(Path(b.folder))
-        except Exception:  # noqa: BLE001
-            spec = {}
-        if b.is_dots:
+            kind, n1, n2 = bb.nominal_lengths(b.folder)
+        except Exception as exc:  # noqa: BLE001
+            self.measure_help.setText(f"{b.name}: can't read board.yaml ({exc})."); return
+        if kind == "dots":
             m = spec.get("measure") or {}
-            if not m:
-                import numpy as np  # noqa: F401
-                from src.board import load_dot_layout
-                xy, _ = load_dot_layout(b.layout_csv)
-                p = bb.measure_pairs(xy)
-                m = {"AB_nominal_mm": round(p["AB"][2], 2), "CD_nominal_mm": round(p["CD"][2], 2)}
             self.mpdf_btn.setEnabled(True)
-            self.m1_label.setText("A-B measured:"); self.m2_label.setText("C-D measured:")
-            self.m1.setValue(m.get("AB_measured_mm") or m["AB_nominal_mm"])
-            self.m2.setValue(m.get("CD_measured_mm") or m["CD_nominal_mm"])
+            self.m1_label.setText("A-B, two readings:"); self.m2_label.setText("C-D, two readings:")
             done = m.get("AB_measured_mm") is not None
             self.measure_help.setText(
-                f"{b.name}: measure centre to centre between the red letters on the print.  "
-                f"File size: A-B {m['AB_nominal_mm']:.1f} mm, C-D {m['CD_nominal_mm']:.1f} mm.  "
-                + (f"Measured {m.get('date', '')}: scale X {spec.get('scale_x', 1):.5f}, "
-                   f"Y {spec.get('scale_y', 1):.5f}." if done else "Not measured yet.")
-                + ("" if spec.get("measure") else "  (Older board: no A-B / C-D marks on its PDF. "
-                   "Use Make PDF to print one with the marks.)"))
+                f"{b.name}: tape centre to centre between the red letters, each distance twice.  "
+                f"File: A-B {n1:.1f} mm, C-D {n2:.1f} mm.  "
+                + (f"Last measured {m.get('date', '')}: A-B {m['AB_measured_mm']:.1f}, "
+                   f"C-D {m['CD_measured_mm']:.1f} mm (scale X {spec.get('scale_x', 1):.5f}, "
+                   f"Y {spec.get('scale_y', 1):.5f})." if done else "NOT MEASURED YET.")
+                + ("" if spec.get("measure") else "  Older board: no red marks on its PDF; "
+                   "use Make PDF to print them."))
         else:
             self.mpdf_btn.setEnabled(False)
-            self.m1_label.setText("Board width:"); self.m2_label.setText("Board height:")
-            self.m1.setValue(b.squares_x * b.cell_width_mm); self.m2.setValue(b.squares_y * b.cell_height_mm)
+            self.m1_label.setText("Width, two readings:"); self.m2_label.setText("Height, two readings:")
             self.measure_help.setText(
-                f"{b.name}: measure the squares edge to edge, full width ({b.squares_x} squares) "
-                f"and full height ({b.squares_y} squares).  Now: cell {b.cell_width_mm:.2f} x "
-                f"{b.cell_height_mm:.2f} mm.")
+                f"{b.name}: measure the squares edge to edge, full width ({b.squares_x} squares) and "
+                f"full height ({b.squares_y} squares), each twice.  File: {n1:.1f} x {n2:.1f} mm.  "
+                f"Now: cell {b.cell_width_mm:.2f} x {b.cell_height_mm:.2f} mm.")
 
     def _make_measure_pdf(self) -> None:
         b = self._current()
@@ -210,20 +210,21 @@ class BoardsTab(QWidget):
         self._on_select()
 
     def _measure(self) -> None:
+        """Saves by itself once all four readings are in and make sense."""
         b = self._current()
-        if b is None:
+        vals = [sp.value() for sp in self.r]
+        if b is None or not all(v > 0 for v in vals):
             return
-        try:
-            a, c = bb.save_measurement(b.folder, self.m1.value(), self.m2.value())
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Measurement", str(exc)); return
-        msg = (f"{b.name}: scale X {a:.5f}, Y {c:.5f} saved" if b.is_dots
-               else f"{b.name}: cell {a:.3f} x {c:.3f} mm saved")
-        if b.is_dots and (abs(a - 1) > 0.02 or abs(c - 1) > 0.02):
-            msg += "  — more than 2% off the file: check the printer scaling"
-        self.log.appendPlainText(msg)
-        self._refresh(select=Path(b.folder).name)
-        self.boards_changed.emit()
+        ok, msg = bb.record_measurement(b.folder, vals[:2], vals[2:])
+        colour = "rgb(120,200,120)" if ok else "rgb(229,115,115)"
+        self.measure_status.setStyleSheet(f"color: {colour};")
+        self.measure_status.setText(msg)
+        self.log.appendPlainText(f"{b.name}: {msg}")
+        if ok:
+            name = Path(b.folder).name
+            self._refresh(select=name)
+            self.boards_changed.emit()
+            self.measure_status.setText(msg)
 
     # ── 3. test ──────────────────────────────────────────────────────────────
     def _test(self) -> None:

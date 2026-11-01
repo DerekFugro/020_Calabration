@@ -151,6 +151,8 @@ class CalibrationWorker(QThread):
             self.progress.emit("Grading: coverage and repeatability…")
             from src.grading import grade
             cal_result.grade = grade(cal_result)
+            from src.grading import board_warning
+            board_warning(cal_result.grade, self._board_config)
             self.progress.emit(
                 f"Calibration complete — RMS {cal_result.rms:.4f} px  "
                 f"({quality.verdict})"
