@@ -1,0 +1,17 @@
+# Written by the Boards tab.  scale_x / scale_y come from measuring the print.
+name: ClaudeRandomDot
+type: dots
+layout_csv: ClaudeRandomDot.csv
+label: ''
+source_csv: F:/Camera Calibrations/ClaudeRandomDot/ClaudeRandomDot.csv
+added: '2026-11-01'
+page_mm:
+- 1500
+- 750
+measure:
+  AB_nominal_mm: 1346.83
+  CD_nominal_mm: 565.77
+  AB_measured_mm: null
+  CD_measured_mm: null
+scale_x: 1.0
+scale_y: 1.0
