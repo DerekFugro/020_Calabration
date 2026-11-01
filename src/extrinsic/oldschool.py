@@ -22,7 +22,7 @@ import numpy as np
 
 from src.van_scan import camera_from_name, van_from_path
 
-SKIP_RE = re.compile(r"do\s*not\s*use|(^|[\\/])bad([\\/]|$)", re.I)
+SKIP_RE = re.compile(r"do[\s_]*not[\s_]*use|(^|[\\/])bad([\\/]|$)", re.I)
 
 
 @dataclass
