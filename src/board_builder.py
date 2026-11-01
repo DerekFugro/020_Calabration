@@ -130,7 +130,7 @@ def solve_scale(xy: np.ndarray, pairs: dict, ab_mm: float, cd_mm: float) -> tupl
 
 # ── PDF ──────────────────────────────────────────────────────────────────────
 
-def dot_pdf(csv_path, out_pdf, label: str = "") -> tuple[float, float]:
+def dot_pdf(csv_path, out_pdf, label: str = "", created: str = "") -> tuple[float, float]:
     """True-scale PDF of the layout with A-B / C-D marks.  Returns page (W, H) mm."""
     from fpdf import FPDF
     xy, r = load_dot_layout(csv_path)          # X right, Y down, mm
@@ -150,17 +150,23 @@ def dot_pdf(csv_path, out_pdf, label: str = "") -> tuple[float, float]:
     for x, y in xy:                            # centre marks for measuring
         pdf.ellipse(ox + x - 0.5, oy + y - 0.5, 1.0, 1.0, style="F")
     pdf.set_text_color(200, 0, 0)
-    pdf.set_font("Helvetica", "B", max(28, round(W / 20)))   # ~70 pt on a 1.4 m board
+    pdf.set_font("Helvetica", "", 36)   # ~13 mm letters: bigger ones (B, D) get found as dots
     for key, letters in (("AB", "AB"), ("CD", "CD")):
         i, j, _ = pairs[key]
         for idx, L in ((i, letters[0]), (j, letters[1])):
             x, y = xy[idx]
             pdf.text(ox + x + r[idx] + 3, oy + y - r[idx] - 3, L)
-    pdf.set_text_color(90, 90, 90)
+    # Name and date, big enough to read across a room, small enough (< 15 mm
+    # letters) that the dot finder ignores them; kept inside the edge margin.
+    pdf.set_text_color(60, 60, 60)
+    pdf.set_font("Helvetica", "", 34)
+    name_line = label + (f"   -   created {created}" if created else "")
+    pdf.text(12, H - 12, name_line)
+    pdf.set_text_color(110, 110, 110)
     pdf.set_font("Helvetica", "", max(12, round(W / 80)))
     ab, cd = pairs["AB"][2], pairs["CD"][2]
-    pdf.text(10, H - 8, f"{label}   Print at 100% (no scaling).  Measure centre to centre: "
-                        f"A-B should be {ab:.1f} mm, C-D should be {cd:.1f} mm.")
+    pdf.text(12, 14, "Print at 100% (no scaling).  Measure centre to centre: "
+                     f"A-B should be {ab:.1f} mm, C-D should be {cd:.1f} mm.")
     pdf.output(str(out_pdf))
     return W, H
 
@@ -197,7 +203,8 @@ def create_dot_board(name: str, csv_path, label: str = "",
     folder.mkdir(parents=True)
     csv_name = safe_name(Path(csv_path).stem) + ".csv"
     shutil.copy2(csv_path, folder / csv_name)
-    W, H = dot_pdf(folder / csv_name, folder / (safe_name(name) + ".pdf"), label or name)
+    W, H = dot_pdf(folder / csv_name, folder / (safe_name(name) + ".pdf"), label or name,
+                   created=date.today().isoformat())
     xy, _ = load_dot_layout(folder / csv_name)
     p = measure_pairs(xy)
     spec = {"name": name, "type": "dots", "layout_csv": csv_name, "label": label,
@@ -236,7 +243,7 @@ def make_measure_pdf(folder) -> Path:
         raise ValueError("Only dot boards need the A-B / C-D marks.")
     csv = folder / spec["layout_csv"]
     out = folder / (safe_name(str(spec.get("name") or folder.name)) + "_measure.pdf")
-    dot_pdf(csv, out, str(spec.get("label") or spec.get("name") or ""))
+    dot_pdf(csv, out, str(spec.get("label") or spec.get("name") or ""), created=str(spec.get("added", "")))
     xy, _ = load_dot_layout(csv)
     p = measure_pairs(xy)
     m = spec.setdefault("measure", {})
