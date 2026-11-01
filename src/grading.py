@@ -63,6 +63,7 @@ class GradeReport:
     grid: GridReport | None = None
     worst_images: list = field(default_factory=list)  # (path, rms_px)
     more_photos: int = 0
+    warnings: list = field(default_factory=list)        # shown, but do not fail the grade
     blur_median_px: float = math.nan                    # dot edge blur, median over photos
     blurry_images: list = field(default_factory=list)   # (path, blur_px), worst first
 
@@ -72,6 +73,7 @@ class GradeReport:
             lines.append(f"  Sharpness: dot edge blur {self.blur_median_px:.1f} px (sharp is about 1 px)")
         lines += [f"  STOP: {s}" for s in self.hard_stops]
         lines += [f"  - {r}" for r in self.reasons]
+        lines += [f"  ! {w}" for w in self.warnings]
         if self.coaching:
             lines.append("What to do:")
             lines += [f"  * {c}" for c in self.coaching]
@@ -169,8 +171,11 @@ def _grade_blur(rep, cal_result) -> None:
     rep.blurry_images = sorted(((p, float(b)) for p, b in zip(paths, blur) if b > BLUR_MAX_PX),
                                key=lambda x: -x[1])
     if rep.blur_median_px > BLUR_MAX_PX:
-        rep.reasons.append(f"Photos are blurry: dot edge blur {rep.blur_median_px:.1f} px "
-                           f"(sharp is about 1 px, limit {BLUR_MAX_PX:g} px).")
+        # A warning, not a fail: of 68 fleet sets this blurry, 10 still met the
+        # repeatability and RMS rules (blur_survey.csv, 2026-11-01).  Blur explains
+        # most failures; the accuracy rules decide.
+        rep.warnings.append(f"Photos are blurry: dot edge blur {rep.blur_median_px:.1f} px "
+                            f"(sharp is about 1 px). Likely why the other checks fail.")
         tip = "Every photo is soft. Do NOT refocus the camera (that changes the lens numbers). "
         # Board distance per photo (board units are mm): if the far photos are sharper,
         # the board is held closer than the lens is focused.

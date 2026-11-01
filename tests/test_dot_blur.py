@@ -44,7 +44,7 @@ def test_blurry_set_fails_and_suggests_distance():
     rep = GradeReport(passed=False, headline="")
     _grade_blur(rep, _cal(8.0 - 1.8 * z, z))        # farther = sharper
     assert rep.blur_median_px > BLUR_MAX_PX
-    assert any("blurry" in r for r in rep.reasons)
+    assert rep.reasons == [] and any("blurry" in w for w in rep.warnings)   # warns, doesn't fail
     assert any("Do NOT refocus" in c and "farther" in c for c in rep.coaching)
 
 

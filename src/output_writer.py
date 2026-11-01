@@ -138,6 +138,7 @@ def write_yaml(
             "headline": g.headline,
             "hard_stops": list(g.hard_stops),
             "reasons":  list(g.reasons),
+            "warnings": list(getattr(g, "warnings", [])),
             "repeatability_p95_mrad": None if rp is None else round(rp.est_error_p95_mrad, 3),
             "repeatability_at_10m_mm": None if rp is None else round(rp.at_10m_mm, 1),
             "more_photos_needed": int(g.more_photos),
@@ -248,6 +249,8 @@ def _grade_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:
         pdf.multi_cell(_CW, 4.2, _ascii("STOP: " + s), new_x="LMARGIN", new_y="NEXT")
     for r in g.reasons:
         pdf.multi_cell(_CW, 4.2, _ascii("- " + r), new_x="LMARGIN", new_y="NEXT")
+    for w in getattr(g, "warnings", []):
+        pdf.multi_cell(_CW, 4.2, _ascii("! " + w), new_x="LMARGIN", new_y="NEXT")
     if g.coaching:
         pdf.set_font("Helvetica", "B", 8)
         pdf.cell(_CW, 4.5, "What to do:", new_x="LMARGIN", new_y="NEXT")
