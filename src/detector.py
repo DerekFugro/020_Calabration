@@ -162,43 +162,80 @@ def _detect_dots(
     )
 
 
+def _init_worker() -> None:
+    cv2.setNumThreads(1)          # one core per process; the pool gives the parallelism
+
+
+def _detect_job(args):
+    path, board_config = args
+    return _detect_single(path, board_config)
+
+
+def _pool_size(n_images: int, workers: int | None) -> int:
+    if workers is not None:
+        return max(1, workers)
+    if n_images < 16:
+        return 1
+    return max(1, min(8, (os.cpu_count() or 2) - 1))
+
+
 def detect_images(
     image_paths: list[str],
     board_config: BoardConfig,
     verbose: bool = True,
     progress_cb=None,
+    workers: int | None = None,
 ) -> list[DetectionResult]:
-    """Detect chessboard corners in a list of image files.
+    """Detect the board in a list of image files.
 
     Parameters
     ----------
     image_paths:
         Absolute or relative paths to JPG/PNG calibration images.
     board_config:
-        Board parameters (squares_x, squares_y determine the corner pattern).
+        Board parameters.
     verbose:
         If True, print a one-line summary per image to stdout.
+    workers:
+        Processes to use.  None = automatic: up to 8, one less than the CPU
+        count, and 1 for fewer than 16 images.  Falls back to one process if a
+        pool can't be started.
 
     Returns
     -------
     list[DetectionResult], one entry per input path (same order).
     """
-    results: list[DetectionResult] = []
+    n = len(image_paths)
+    k = _pool_size(n, workers)
+    results: list[DetectionResult | None] = [None] * n
+    done = 0
 
-    for k, path in enumerate(image_paths, 1):
-        result = _detect_single(path, board_config)
-        results.append(result)
-        if progress_cb is not None and (k % 10 == 0 or k == len(image_paths)):
-            progress_cb(f"Detecting {board_config.name}: {k} / {len(image_paths)} images…")
-
+    def _report(i: int, result: DetectionResult) -> None:
+        nonlocal done
+        results[i] = result
+        done += 1
+        if progress_cb is not None and (done % 10 == 0 or done == n):
+            progress_cb(f"Detecting {board_config.name}: {done} / {n} images…")
         if verbose:
-            name = os.path.basename(path)
+            name = os.path.basename(image_paths[i])
             if result.load_error:
                 print(f"  LOAD ERROR  {name}: {result.load_error_msg}")
             else:
-                print(
-                    f"  {name}: {result.corner_count} corners, "
-                    f"blur={result.blur_score:.1f}"
-                )
+                print(f"  {name}: {result.corner_count} corners, blur={result.blur_score:.1f}")
 
-    return results
+    if k > 1:
+        try:
+            from concurrent.futures import ProcessPoolExecutor, as_completed
+            with ProcessPoolExecutor(max_workers=k, initializer=_init_worker) as pool:
+                futs = {pool.submit(_detect_job, (p, board_config)): i
+                        for i, p in enumerate(image_paths)}
+                for f in as_completed(futs):
+                    _report(futs[f], f.result())
+            return results  # type: ignore[return-value]
+        except Exception:  # noqa: BLE001 — pool unavailable: do it in this process
+            results = [None] * n
+            done = 0
+
+    for i, path in enumerate(image_paths):
+        _report(i, _detect_single(path, board_config))
+    return results  # type: ignore[return-value]
