@@ -64,23 +64,78 @@ def detect_balls(bgr: np.ndarray) -> np.ndarray:
     return np.array(out, float).reshape(-1, 3)
 
 
-def _local_wall(gray, x, y, r=18):
-    """Look again for a dark blob near (x, y) with a local threshold.  None if none."""
+def _ellipse_dist(pts, e):
+    (cx, cy), (A, B), ang = e
+    a, b = max(A, 1e-6) / 2, max(B, 1e-6) / 2
+    t = np.radians(ang)
+    dx, dy = pts[:, 0] - cx, pts[:, 1] - cy
+    u = dx * np.cos(t) + dy * np.sin(t)
+    v = -dx * np.sin(t) + dy * np.cos(t)
+    rr = np.sqrt((u / a) ** 2 + (v / b) ** 2)
+    return np.abs(rr - 1.0) * (a + b) / 2           # about the distance in px
+
+
+_RNG = np.random.default_rng(7)
+
+
+def _centre(c, th_shape):
+    """Centre of a dark disc from its outline.  An ellipse is fitted with RANSAC, so
+    a bracket or bolt touching the disc, or a white cross that cuts its edge, is
+    ignored: only the outline points on one clean ellipse count."""
+    pts = c.reshape(-1, 2).astype(np.float32)
+    if len(pts) < 12:
+        (cx, cy), _ax, _ang = cv2.fitEllipse(c) if len(pts) >= 5 else ((pts[:, 0].mean(), pts[:, 1].mean()), 0, 0)
+        return float(cx), float(cy)
+    full = cv2.fitEllipse(pts)
+    best_in = _ellipse_dist(pts, full) < 1.0
+    if best_in.mean() > 0.9:                         # clean outline: use it all
+        return float(full[0][0]), float(full[0][1])
+    n = len(pts)
+    for _ in range(120):
+        idx = np.sort(_RNG.choice(n, 6, replace=False))
+        try:
+            e = cv2.fitEllipse(pts[idx])
+        except cv2.error:
+            continue
+        if min(e[1]) < 3 or max(e[1]) > 4 * min(e[1]):
+            continue
+        inl = _ellipse_dist(pts, e) < 1.0
+        if inl.sum() > best_in.sum():
+            best_in = inl
+    if best_in.sum() >= 8:
+        e = cv2.fitEllipse(pts[best_in])
+        return float(e[0][0]), float(e[0][1])
+    return float(full[0][0]), float(full[0][1])
+
+
+def _local_wall(gray, x, y, r=32):
+    """Look again for a dark disc centred near (x, y), in a window around where the
+    solved camera says it must be.  Otsu threshold in the window, small bits opened
+    away, then the round dark part nearest the predicted spot.  None if none."""
     h, w = gray.shape[:2]
     x0, x1, y0, y1 = int(x) - r, int(x) + r + 1, int(y) - r, int(y) + r + 1
     if x0 < 0 or y0 < 0 or x1 > w or y1 > h:
         return None
     patch = cv2.GaussianBlur(gray[y0:y1, x0:x1], (3, 3), 0)
-    t = (int(np.percentile(patch, 90)) + int(patch.min())) // 2
-    _, th = cv2.threshold(patch, t, 255, cv2.THRESH_BINARY_INV)
-    n, lab, st, cen = cv2.connectedComponentsWithStats(th)
+    if int(patch.max()) - int(patch.min()) < 25:
+        return None
+    _, th = cv2.threshold(patch, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    th = cv2.morphologyEx(th, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    cs, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     best = None
-    for i in range(1, n):
-        if st[i, 4] < 4 or st[i, 4] > 0.6 * th.size:
+    for c in cs:
+        a = cv2.contourArea(c)
+        if a < 6 or a > 0.8 * th.size or len(c) < 6:
             continue
-        cx, cy = cen[i]
+        per = cv2.arcLength(c, True)
+        if per <= 0 or 4 * np.pi * a / (per * per) < 0.35:
+            continue
+        if len(c) >= 6:
+            cx, cy = _centre(c, th.shape)
+        else:
+            M = cv2.moments(c); cx, cy = M["m10"] / M["m00"], M["m01"] / M["m00"]
         d = np.hypot(cx - r, cy - r)
-        if d < r * 0.6 and (best is None or d < best[0]):
+        if best is None or d < best[0]:
             best = (d, cx + x0, cy + y0)
     return None if best is None else (best[1], best[2])
 
@@ -190,10 +245,16 @@ def match_targets(bgr, site, K, D, rvec0, tvec0) -> MatchResult:
     for i in np.nonzero(vis)[0]:
         if i in got or site.ground[i]:
             continue
-        p = _local_wall(gray, *cur[i], r=int(18 * sc))
-        if p is not None and np.hypot(p[0] - cur[i, 0], p[1] - cur[i, 1]) < 4.0 * sc:
+        p = _local_wall(gray, *cur[i], r=int(32 * sc))
+        if p is not None and np.hypot(p[0] - cur[i, 0], p[1] - cur[i, 1]) < 6.0 * sc:
             extra.append((i, p))
-    res.matches = ([(site.ids[i], float((Bl if g else W)[j, 0]), float((Bl if g else W)[j, 1]),
+    def wall_xy(j):
+        x0, y0 = W[j, 0], W[j, 1]
+        rr = int(max(12 * sc, 1.3 * W[j, 2]))
+        p = _local_wall(gray, x0, y0, r=rr)
+        return (p if p is not None and np.hypot(p[0] - x0, p[1] - y0) < 0.5 * W[j, 2] + 2 else (x0, y0))
+
+    res.matches = ([(site.ids[i], *(map(float, (Bl[j, :2] if g else wall_xy(j)))),
                      "ball" if g else "wall") for i, j, g in pairs]
                    + [(site.ids[i], float(p[0]), float(p[1]), "wall (2nd look)") for i, p in extra])
     res.predicted = {site.ids[i]: (float(cur[i, 0]), float(cur[i, 1])) for i in np.nonzero(vis)[0]}

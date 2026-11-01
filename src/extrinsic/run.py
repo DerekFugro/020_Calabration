@@ -139,7 +139,11 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
             pv = place_on_van()
             if pv is not None:
                 sr.seed = "other setups of this camera"
-                cands = [pv]
+                # the camera's average place first; each solved setup's own place and the
+                # default seed are tried too when that finds few targets
+                cands = [pv] + [(x.solve.R_bc, x.solve.lever_frd, x.solve.up_ground_m) for x in solved]
+                if cs.camera in seeds:
+                    sd = seeds[cs.camera]; cands.append((sd["R_bc"], sd["lever"], sd["up"]))
             elif cs.camera in seeds:
                 sd = seeds[cs.camera]; cands = [(sd["R_bc"], sd["lever"], sd["up"])]
                 sr.seed = "default seed"
@@ -154,6 +158,8 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
                 m = match_targets(img, site, K, D, *predict_pose(site, s.van, when, *c))
                 if best is None or len(m.matches) > len(best.matches):
                     best = m
+                if len(best.matches) >= 12:
+                    break
             sr.match = best
             pose = None
         if pose is not None:

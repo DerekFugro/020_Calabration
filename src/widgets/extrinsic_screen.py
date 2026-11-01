@@ -78,14 +78,19 @@ class ExtrinsicScreen(QWidget):
             h.setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
         h.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.setups = QListWidget(); self.setups.setMaximumWidth(260)
-        self.view = QLabel("Solve, then pick a setup to see the targets found.")
-        self.view.setAlignment(Qt.AlignmentFlag.AlignCenter); self.view.setMinimumHeight(300)
+        from src.widgets.zoom_view import ZoomView
+        self.view = ZoomView(); self.view.setMinimumHeight(320)
+        self.legend = QLabel("<span style='color:#3cc83c'>■ found and used</span> &nbsp; "
+                             "<span style='color:#ff5050'>■ found but left out</span> &nbsp; "
+                             "<span style='color:#ffb428'>■ should be in view, not found</span> &nbsp; "
+                             "Wheel = zoom, drag = move, double-click = whole picture")
+        self.legend.setStyleSheet("font-size: 8pt;")
         self.details = QPlainTextEdit(); self.details.setReadOnly(True); self.details.setMaximumHeight(170)
         lower = QSplitter(Qt.Orientation.Horizontal)
         lw = QWidget(); ll = QVBoxLayout(lw); ll.setContentsMargins(0, 0, 0, 0)
         ll.addWidget(QLabel("Setups")); ll.addWidget(self.setups)
         rw = QWidget(); rl = QVBoxLayout(rw); rl.setContentsMargins(0, 0, 0, 0)
-        rl.addWidget(self.view, 1); rl.addWidget(self.details)
+        rl.addWidget(self.legend); rl.addWidget(self.view, 1); rl.addWidget(self.details)
         lower.addWidget(lw); lower.addWidget(rw); lower.setSizes([240, 900])
         split = QSplitter(Qt.Orientation.Vertical); split.addWidget(self.table); split.addWidget(lower)
         split.setSizes([200, 520])
@@ -187,7 +192,12 @@ class ExtrinsicScreen(QWidget):
             return
         for sr in res.setups:
             n = sr.solve.n_points if sr.solve else 0
-            self.setups.addItem(f"{'✓' if sr.passed else '✗'} {sr.setup.name}  {n} targets")
+            if sr.passed:
+                why = f"{n} targets"
+            else:
+                main = [p for p in sr.problems if not p.startswith("target ")]
+                why = main[0] if main else "not used"
+            self.setups.addItem(f"{'✓' if sr.passed else '✗'} {sr.setup.name}  {why}")
         lines = [res.headline] + [f"  - {x}" for x in res.reasons] + [f"  ! {x}" for x in res.warnings]
         self.details.setPlainText("\n".join(lines))
 
@@ -198,11 +208,9 @@ class ExtrinsicScreen(QWidget):
         sr = res.setups[i]
         from src.extrinsic.outputs import overlay
         img = overlay(sr, self.site, res.K, res.D)
-        if img is not None:
-            rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            q = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.strides[0], QImage.Format.Format_RGB888).copy()
-            self.view.setPixmap(QPixmap.fromImage(q).scaled(self.view.width(), self.view.height(),
-                                Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        if img is None and sr.setup.photo:
+            img = cv2.imread(sr.setup.photo)
+        self.view.set_bgr(img)
         L = [f"{sr.setup.name}   seed: {sr.seed or '-'}   photo: {sr.setup.photo}"]
         if sr.solve:
             from src.extrinsic.solve import pointing

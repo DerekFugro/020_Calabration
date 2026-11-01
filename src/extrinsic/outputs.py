@@ -103,39 +103,62 @@ def write_eop(sr, site, path: Path, K=None) -> None:
     path.write_bytes(("\r\n".join(L) + "\r\n").encode("ascii"))
 
 
+GREEN, RED, ORANGE = (60, 200, 60), (80, 80, 255), (40, 180, 255)
+
+
+def _label(img, text, x, y, col, sc):
+    """Text in a dark box, so it reads on the white wall and the dark pavement."""
+    fs, th = 0.55 * sc, max(1, int(round(1.4 * sc)))
+    (tw, tht), base = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, fs, th)
+    x, y = int(x), int(y)
+    h, w = img.shape[:2]
+    x = min(max(0, x), w - tw - 6)
+    y = min(max(tht + 6, y), h - 4)
+    cv2.rectangle(img, (x - 3, y - tht - 5), (x + tw + 3, y + base), (25, 25, 25), -1)
+    cv2.rectangle(img, (x - 3, y - tht - 5), (x + tw + 3, y + base), col, max(1, int(sc)))
+    cv2.putText(img, text, (x, y - 2), cv2.FONT_HERSHEY_SIMPLEX, fs, (255, 255, 255), th, cv2.LINE_AA)
+
+
 def overlay(sr, site, K, D) -> np.ndarray | None:
-    """Photo with found targets (green + number + miss mm), dropped (red), not found (grey)."""
-    img = cv2.imread(sr.setup.photo)
-    if img is None or sr.match is None:
-        return img
-    sol = sr.solve
+    """The photo with every target marked for a person to check:
+    green = found and used (number + miss in mm), red = found but left out (why),
+    orange = should be in view but not found.  Zoom in to read the small ones."""
+    img = cv2.imread(sr.setup.photo) if sr.setup.photo else None
+    if img is None:
+        return None
+    sc = img.shape[1] / 1920.0
+    r0, t = int(14 * sc), max(2, int(round(2 * sc)))
+    sol, m = sr.solve, sr.match
     used = set(sol.ids) if sol else set()
-    miss = {}
+    dropped = {p: why for p, why in (sol.dropped if sol else [])}
+    miss = dict(zip(sol.ids, sol.loo_mm)) if sol is not None else {}
+    found = {p: (x, y) for p, x, y, _k in (m.matches if m else [])}
+    if m is not None:
+        for pid, (px, py) in m.predicted.items():
+            if pid in found and pid in used:
+                x, y = found[pid]
+                cv2.circle(img, (int(x), int(y)), r0, GREEN, t, cv2.LINE_AA)
+                cv2.line(img, (int(x - r0 * 1.6), int(y)), (int(x - r0 * 0.6), int(y)), GREEN, t)
+                cv2.line(img, (int(x + r0 * 0.6), int(y)), (int(x + r0 * 1.6), int(y)), GREEN, t)
+                cv2.line(img, (int(x), int(y - r0 * 1.6)), (int(x), int(y - r0 * 0.6)), GREEN, t)
+                cv2.line(img, (int(x), int(y + r0 * 0.6)), (int(x), int(y + r0 * 1.6)), GREEN, t)
+                _label(img, f"{pid}  {miss.get(pid, 0):.0f} mm", x + r0 * 1.8, y - r0 * 0.4, GREEN, sc)
+            elif pid in found:
+                x, y = found[pid]
+                cv2.drawMarker(img, (int(x), int(y)), RED, cv2.MARKER_TILTED_CROSS, int(r0 * 2.2), t)
+                why = dropped.get(pid, "left out")
+                _label(img, f"{pid} left out: {why.split(':')[0]}", x + r0 * 1.8, y - r0 * 0.4, RED, sc)
+            else:
+                cv2.circle(img, (int(px), int(py)), int(r0 * 0.8), ORANGE, t, cv2.LINE_AA)
+                _label(img, f"{pid} not found", px + r0 * 1.2, py - r0 * 0.4, ORANGE, sc)
     if sol is not None:
-        for pid, mm in zip(sol.ids, sol.loo_mm):
-            miss[pid] = mm
-    found = {p: (x, y) for p, x, y, _k in sr.match.matches}
-    for pid, (px, py) in sr.match.predicted.items():
-        if pid in found and pid in used:
-            x, y = found[pid]; col = (60, 200, 60)
-            cv2.circle(img, (int(x), int(y)), 9, col, 2)
-            cv2.putText(img, f"{pid} {miss.get(pid, 0):.0f}mm", (int(x) + 11, int(y) - 6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3, cv2.LINE_AA)
-            cv2.putText(img, f"{pid} {miss.get(pid, 0):.0f}mm", (int(x) + 11, int(y) - 6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1, cv2.LINE_AA)
-        elif pid in found:
-            x, y = found[pid]
-            cv2.drawMarker(img, (int(x), int(y)), (40, 40, 230), cv2.MARKER_TILTED_CROSS, 18, 2)
-            cv2.putText(img, f"{pid} dropped", (int(x) + 11, int(y) - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                        (40, 40, 230), 1, cv2.LINE_AA)
-        else:
-            cv2.circle(img, (int(px), int(py)), 6, (150, 150, 150), 1)
-            cv2.putText(img, pid, (int(px) + 8, int(py) - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.4,
-                        (150, 150, 150), 1, cv2.LINE_AA)
-    txt = (f"{sr.setup.name}  {sol.n_points} targets  miss {sol.loo_rms_mm:.1f} mm RMS"
-           if sol else f"{sr.setup.name}  not solved")
-    cv2.putText(img, txt, (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 4, cv2.LINE_AA)
-    cv2.putText(img, txt, (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 1, cv2.LINE_AA)
+        head = (f"{sr.setup.name}   {'USED' if sr.passed else 'NOT USED'}   {sol.n_points} targets   "
+                f"miss {sol.loo_rms_mm:.1f} mm RMS")
+    else:
+        head = f"{sr.setup.name}   NOT USED"
+    lines = [head] + [p for p in sr.problems][:3]
+    for i, ln in enumerate(lines):
+        _label(img, ln, 12 * sc, (34 + i * 30) * sc, GREEN if sr.passed else RED, sc * (1.25 if i == 0 else 1.0))
     return img
 
 
