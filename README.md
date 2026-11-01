@@ -396,3 +396,15 @@ tests/
 from when the app used the ArUco module.  They now hold plain chessboard
 corners and sequential row-major IDs.  The names are kept because renaming
 them touches `detector.py`, `calibrator.py`, and four test files.
+
+## Tabs (2026-11)
+
+- **Load Intrinsic > Whole van**: pick a van's Intrinsic folder; every camera folder is found
+  (camera from the folder name, serial from the filed `<VAN>_<Camera>_<Serial>_intrinsic_cal.xml`),
+  graded in one go, and compared to the filed calibration. *Export all formats* writes fleet XML,
+  PGInteriorCalibration RWC, OpenCV YAML/XML, ROS camera_info, Kalibr, COLMAP, Metashape XML, JSON
+  and CSV into `Calibration_<date>` next to the photos. Files from a calibration that did not pass
+  get a `NOT_PASSED_` prefix.
+- **Load Intrinsic > One camera**: the original setup / review / report flow.
+- **Capture Intrinsic, Load Extrinsic, Capture Extrinsic**: placeholders, next to build.
+- CLI: `python cli.py FOLDER --van ARAN65 --role ForwardRight --serial 101324 --export OUTDIR`

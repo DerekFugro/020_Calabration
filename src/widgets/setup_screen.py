@@ -64,7 +64,7 @@ _DEFAULT_MIN_BLUR = 20.0
 # soon as anyone types a new role.  The actual serial for each is NOT seeded —
 # hard-coding rig facts into the app is what the master doc forbids; the app
 # learns the pairing the first time the operator enters it.
-_SEED_ROLES = ["PAVE", "ROW", "BENCH"]
+_SEED_ROLES = ["FORWARDLEFT", "FORWARDRIGHT", "ROW", "REARLEFT", "REARRIGHT", "PAVE", "BENCH"]
 
 
 # ── QSettings JSON helpers ───────────────────────────────────────────────────
@@ -148,7 +148,7 @@ class SetupScreen(QWidget):
         # board-printing helper.
 
         # Filter parameters group
-        self.filter_group       = QGroupBox("Filter Parameters")
+        self.filter_group       = QGroupBox("Advanced: chessboard blur filter (dot boards skip it)")
         self.min_blur_label     = QLabel("Min Blur Score:")
         self.min_blur_spin      = QDoubleSpinBox()
         self.min_blur_hint      = QLabel("(lower = accept blurrier images; 0 = no blur check)")
@@ -430,6 +430,18 @@ class SetupScreen(QWidget):
     def min_blur_score(self) -> float:
         """Current blur threshold set by the user."""
         return self.min_blur_spin.value()
+
+    def set_inputs(self, folder: str, role: str, serial: str) -> None:
+        """Pre-fill from the van table (Load Intrinsic > Whole van)."""
+        self.folder_input.setText(folder)
+        if role:
+            from src.calibration_store import normalise_role
+            role = normalise_role(role)
+            if self.role_combo.findText(role) < 0:
+                self.role_combo.addItem(role)
+            self.role_combo.setCurrentText(role)
+        self.serial_input.setText(serial)
+        self._update_run_button()
 
     def set_busy(self, busy: bool) -> None:
         """Called by MainWindow to lock/unlock the screen during a worker run."""

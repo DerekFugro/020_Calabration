@@ -5,6 +5,7 @@ Examples (from the app folder):
     python cli.py "F:\...\Board\Rear\Rear"                      # auto-detect board
     python cli.py "F:\...\Board\ROW" --board ikea_road
     python cli.py "F:\...\Board\Rear\Rear" --serial 262503744 --role PAVE --save
+    python cli.py "F:\...\Images\ForwardRight" --van ARAN65 --role ForwardRight --serial 101324 --export out
     python cli.py --grade-all "F:\Camera Calibrations" --csv grades.csv --workers 8
 
 --board takes "auto" (default) or a board name / Cal_board folder name.
@@ -38,6 +39,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--serial", default="", help="camera serial (needed with --save)")
     ap.add_argument("--role", default="", help="camera role, e.g. PAVE or ROW")
     ap.add_argument("--save", action="store_true", help="write CAL_ YAML + PDF next to the images")
+    ap.add_argument("--van", default="", help="van name, e.g. ARAN65 (for --export)")
+    ap.add_argument("--export", metavar="OUTDIR", help="write every format (fleet XML, PG RWC, OpenCV, ROS, "
+                    "Kalibr, COLMAP, Metashape, JSON, CSV) into OUTDIR; needs --van, --role, --serial")
     ap.add_argument("--grade-all", metavar="ROOT", help="grade every image folder (>= 30 images) under ROOT")
     ap.add_argument("--csv", default="grades.csv", help="output CSV for --grade-all")
     ap.add_argument("--workers", type=int, default=1, help="parallel folders for --grade-all")
@@ -63,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("folder is required (or use --list-boards)")
     if a.save and not a.serial:
         ap.error("--save needs --serial")
+    if a.export and not (a.van and a.role and a.serial):
+        ap.error("--export needs --van, --role and --serial")
 
     paths = _subsample(find_images(a.folder), a.max_images)
     if not paths:
@@ -107,6 +113,13 @@ def main(argv: list[str] | None = None) -> int:
     cal.grade = grade(cal)
     print()
     print(cal.grade.as_text())
+
+    if a.export:
+        from src.export_formats import Intrinsics, export_all
+        from src.van_scan import camera_from_name
+        cam = camera_from_name(a.role) or a.role
+        files = export_all(Intrinsics.from_result(cal, a.van.upper(), cam, a.serial, board=board.name), a.export)
+        print(f"Wrote {len(files)} files to {a.export}" + ("" if cal.grade.passed else "  (NOT_PASSED_ prefix)"))
 
     if a.save:
         from src.output_writer import write_outputs

@@ -5,7 +5,7 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 from src.styles import build_dark_palette
-from src.widgets.main_window import MainWindow
+from src.widgets.app_window import AppWindow
 
 APP_NAME = "Calibration"
 
@@ -17,7 +17,7 @@ def main() -> int:
     app.setPalette(build_dark_palette())
     app.setStyle("Fusion")
 
-    window = MainWindow()
+    window = AppWindow()
     window.show()
 
     return app.exec()

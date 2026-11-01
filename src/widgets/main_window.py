@@ -53,6 +53,7 @@ class MainWindow(QMainWindow):
         self._filter_results: list                   = []
         self._cal_result:     CalibrationResult | None = None
         self._quality:        QualityReport | None   = None
+        self.van:             str                    = ""   # set by AppWindow's van bar
         # Workers (kept alive until replaced)
         self._detection_worker:    DetectionWorker | None    = None
         self._calibration_worker:  CalibrationWorker | None  = None
@@ -230,6 +231,7 @@ class MainWindow(QMainWindow):
             f"PDF:   {pdf_path.name}\n\n"
             f"Saved to:\n{self._image_folder}"
         )
+        local_note += self._export_fleet_formats(dt)
 
         stored_path, store_error = self._publish_to_store(yaml_path, dt)
 
@@ -257,6 +259,24 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 f"Saved: {yaml_path.name}  ·  NOT published to the store", 12000
             )
+
+    def _export_fleet_formats(self, dt: datetime) -> str:
+        """Fleet cameras: also write every format (src/export_formats.py)."""
+        from src.van_scan import camera_from_name
+        cam = camera_from_name(self._role)
+        if not cam or cam == "PAVE":
+            return ""
+        if not self.van:
+            return "\n\nOther formats not written: type the van (e.g. ARAN65) in the van bar."
+        try:
+            from src.export_formats import Intrinsics, export_all
+            c = Intrinsics.from_result(self._cal_result, self.van, cam, self._serial,
+                                       board=self._board_config.name, date=dt)
+            out = Path(self._image_folder) / f"Calibration_{dt:%Y%m%d_%H%M%S}"
+            files = export_all(c, out)
+            return f"\n\nAll formats ({len(files)} files) in:\n{out}"
+        except Exception as exc:  # noqa: BLE001
+            return f"\n\nOther formats FAILED: {exc}"
 
     def _publish_to_store(
         self,
@@ -293,6 +313,19 @@ class MainWindow(QMainWindow):
         if g is not None:
             return bool(g.passed)
         return self._quality.pass_verdict if self._quality else None
+
+    # ── Result handed over from the van table ─────────────────────────────────
+    def show_result(self, folder, role, serial, board, detections,
+                    filter_results, cal_result, quality) -> None:
+        """Open the full report for a camera already graded in the van table."""
+        self._image_folder, self._role, self._serial = folder, role, serial
+        self._board_config = board
+        self._detections, self._filter_results = detections, filter_results
+        self._cal_result, self._quality = cal_result, quality
+        self.setup_screen.set_inputs(folder, role, serial)
+        self.report_screen.set_data(cal_result, quality, board)
+        self.stack.setCurrentIndex(2)
+        self.statusBar().showMessage(f"{role} {serial}: {cal_result.grade.headline}")
 
     # ── New calibration ───────────────────────────────────────────────────────
     def _on_new_calibration_requested(self) -> None:
