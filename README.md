@@ -32,7 +32,8 @@ One path for One camera, Whole van and the CLI (`run_folder`):
    sharp set, are left out automatically and listed (`src/auto_clean.py`).
 5. Grade (`src/grading.py`). **PASS** needs all of:
    - no hard stop (NaN, placeholder values, implausible focal length);
-   - repeatability: two halves of the photos agree within 1 mrad (10 mm at 10 m);
+   - repeatability: the photos split into two random halves (6 times, median) agree within
+     0.6 mrad (6 mm at 10 m) — changed 2026-11-02 from first-vs-second half at 10 mm;
    - every 3×3 area has enough points and tilt, and **no red area**;
    - RMS under 2 px.
 

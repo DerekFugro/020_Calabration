@@ -139,8 +139,8 @@ def write_yaml(
             "dot_edge_blur_median_px": None if math.isnan(getattr(g, "blur_median_px", float("nan")))
                                        else round(g.blur_median_px, 2),
             "blurry_photos": [Path(p).name for p, _ in getattr(g, "blurry_images", [])],
-            "rules": "src/grading.py 2026-10-31: no hard stop, repeatability <= 1 mrad, "
-                     "all 3x3 areas with enough points and tilt, RMS < 2 px",
+            "rules": "src/grading.py 2026-11-02: no hard stop; repeatability (median of 6 random half "
+                     "splits) <= 0.6 mrad; all 3x3 areas with enough points and tilt, none red; RMS < 2 px",
         }
 
     if board_config.is_dots:

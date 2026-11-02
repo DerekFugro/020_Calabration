@@ -3,10 +3,15 @@
 Rules agreed with Derek on 2026-10-31.  A calibration PASSES when all hold:
   1. No hard stop (sanity): no NaN, not a placeholder (image-centre principal
      point with zero distortion), plausible focal length, >= MIN_IMAGES used.
-  2. Repeatability: the photos split into first and second half (in time) are
-     calibrated separately; after removing a common camera rotation (absorbed
-     by the extrinsic/boresight), half their 95th-percentile disagreement is
-     the estimated error.  Must be <= REPEAT_MAX_MRAD (1 mrad = 10 mm at 10 m).
+  2. Repeatability: the photos are split into two random halves, each half is
+     calibrated separately, and after removing a common camera rotation
+     (absorbed by the extrinsic/boresight) half their 95th-percentile
+     disagreement is the estimated error.  Done REPEAT_SPLITS times; the median
+     counts.  Must be <= REPEAT_MAX_MRAD (0.6 mrad = 6 mm at 10 m).
+     Changed 2026-11-02 (Derek): was first half vs second half in time, limit
+     1 mrad.  On 68 fleet cameras random splits were a little steadier and
+     tracked real Old School target misses better; 0.6 mrad keeps about the same
+     pass rate as before (38 vs 39 of 68) until a sharp PASS set sets the limit.
   3. Coverage: every 3x3 area has enough points and enough board tilt
      (points_status and tilt_status good, src/coverage.py), and no area is red
      on any measure (points, error, tilt) — added 2026-11-01.
@@ -29,7 +34,9 @@ from src.coverage import GOOD, GRID_N, POINTS_GOOD, POOR, GridReport, compute_gr
 
 # ── Pass rules (edit here) ───────────────────────────────────────────────────
 RMS_MAX_PX = 2.0
-REPEAT_MAX_MRAD = 1.0
+REPEAT_MAX_MRAD = 0.6
+REPEAT_SPLITS = 6
+REPEAT_SEED = 0                  # fixed: the same photos always give the same answer
 MIN_IMAGES = 15
 MIN_IMAGES_PER_HALF = 6
 PLACEHOLDER_CENTRE_TOL_PX = 1.0
@@ -160,7 +167,7 @@ def ray_disagreement_mrad(K1, D1, K2, D2, size, remove_rotation=True) -> np.ndar
 
 
 def repeatability(cal_result) -> Repeatability | None:
-    """Calibrate first and second half of the photos separately and compare."""
+    """Split the photos into two random halves, calibrate each, compare; median of REPEAT_SPLITS splits."""
     pts = cal_result.points_used
     k = len(pts) // 2
     if k < MIN_IMAGES_PER_HALF:
@@ -168,16 +175,25 @@ def repeatability(cal_result) -> Repeatability | None:
     O = [np.asarray(o, np.float32) for _, o, _ in pts]
     I = [np.asarray(i, np.float32).reshape(-1, 1, 2) for _, _, i in pts]
     size = tuple(cal_result.image_size)
-    _, Ka, Da, _, _ = cv2.calibrateCamera(O[:k], I[:k], size, None, None)
-    _, Kb, Db, _, _ = cv2.calibrateCamera(O[k:], I[k:], size, None, None)
-    ang = ray_disagreement_mrad(Ka, Da, Kb, Db, size)
-    raw = ray_disagreement_mrad(Ka, Da, Kb, Db, size, remove_rotation=False)
+    rng = np.random.default_rng(REPEAT_SEED)
+    splits = [rng.permutation(len(pts)) for _ in range(REPEAT_SPLITS)]
+
+    def one(perm):
+        a, b = np.sort(perm[:k]), np.sort(perm[k:])
+        _, Ka, Da, _, _ = cv2.calibrateCamera([O[i] for i in a], [I[i] for i in a], size, None, None)
+        _, Kb, Db, _, _ = cv2.calibrateCamera([O[i] for i in b], [I[i] for i in b], size, None, None)
+        ang = ray_disagreement_mrad(Ka, Da, Kb, Db, size)
+        raw = ray_disagreement_mrad(Ka, Da, Kb, Db, size, remove_rotation=False)
+        return float(np.percentile(ang, 95)), float(ang.mean()), float(raw.mean())
+
+    from concurrent.futures import ThreadPoolExecutor      # OpenCV releases the GIL
+    with ThreadPoolExecutor(max_workers=REPEAT_SPLITS) as ex:
+        res = np.array(list(ex.map(one, splits)))
+    p95, mean, raw = np.median(res, axis=0)
     # two independent halves each carry ~sqrt(2) x the full set's error,
     # so their difference is ~2 x the full set's error.
-    return Repeatability(est_error_p95_mrad=float(np.percentile(ang, 95)) / 2,
-                         est_error_mean_mrad=float(ang.mean()) / 2,
-                         halves_raw_mean_mrad=float(raw.mean()),
-                         images_per_half=k)
+    return Repeatability(est_error_p95_mrad=float(p95) / 2, est_error_mean_mrad=float(mean) / 2,
+                         halves_raw_mean_mrad=float(raw), images_per_half=k)
 
 
 def sanity_problems(K, D, size, images_used: int) -> list[str]:
@@ -324,9 +340,9 @@ def grade(cal_result) -> GradeReport:
         rep.reasons.append(f"Repeatability not checked: needs at least {2 * MIN_IMAGES_PER_HALF} usable photos.")
     elif r.est_error_p95_mrad > REPEAT_MAX_MRAD:
         rep.reasons.append(f"Repeatability: about {r.at_10m_mm:.0f} mm at 10 m (limit "
-                           f"{REPEAT_MAX_MRAD * 10:.0f} mm). Two halves of the photos give different lenses.")
-        rep.coaching.append("Repeatability: spread the board over the whole picture in both the first and "
-                            "the second half of the shoot, and hold it still.")
+                           f"{REPEAT_MAX_MRAD * 10:.0f} mm). Halves of the photos give different lenses.")
+        rep.coaching.append("Lens not steady: take sharp photos with the board held still, spread over the "
+                            "whole picture and tilted; more photos at the edges help most.")
 
     # RMS
     if not math.isnan(rep.rms_px) and rep.rms_px >= RMS_MAX_PX:

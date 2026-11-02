@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 from src.board import BoardConfig
 from src.calibrator import CalibrationResult
 from src.coverage import GOOD, POOR, WEAK, compute_grid, limits_text
+from src.grading import REPEAT_MAX_MRAD
 from src.styles import (
     BUTTON_H, MARGIN, SPACING,
     C_TEXT_DIM,
@@ -345,7 +346,7 @@ class ReportScreen(QWidget):
             st, big, small = g.steady
             fg, bg = {"good": (C_GREEN, C_GREEN_BG), "poor": (C_RED, C_RED_BG)}.get(st, (C_AMBER, C_AMBER_BG))
             self.steady_box.setText(
-                f"<span style='font-size:9pt'>Lens steady (photos split in two, solved separately)</span><br>"
+                f"<span style='font-size:9pt'>Lens steady (photos split in two at random, each half solved, 6 times)</span><br>"
                 f"<span style='font-size:20pt; font-weight:bold'>{big}</span>&nbsp;&nbsp;"
                 f"<span style='font-size:10pt'>{small}</span>")
             self.steady_box.setStyleSheet(
@@ -362,7 +363,7 @@ class ReportScreen(QWidget):
         rp = g.repeatability
         if rp is not None:
             parts.append(f"<b>Repeatability:</b> about {rp.at_10m_mm:.0f} mm at 10 m "
-                         f"({rp.est_error_p95_mrad:.2f} mrad). Limit 10 mm.")
+                         f"({rp.est_error_p95_mrad:.2f} mrad). Limit {REPEAT_MAX_MRAD * 10:g} mm.")
         parts += [f"<b>STOP:</b> {html.escape(s)}" for s in g.hard_stops]
         parts += [f"&bull; {html.escape(r)}" for r in g.reasons]
         parts += [f"<span style='color:#e0b050'>&#9888; {html.escape(w)}</span>"
