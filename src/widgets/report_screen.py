@@ -1,8 +1,10 @@
 """report_screen.py — One camera, step 2: the result.
 
-One rating only: the PASS / NOT PASSED banner from the grade (src/grading.py),
-then why, what to shoot next, the 3x3 coverage grid, photos left out, and the
-numbers.  Emits save_requested() and new_calibration_requested().
+Top, always in view: the one line the crew needs (PASS — you're done, or
+NOT PASSED — get N more photos) and the 3x3 squares, each saying "Done" or
+how many more photos to take there and how.  Everything below is
+information only: why, photos left out, the numbers.
+Emits save_requested() and new_calibration_requested().
 """
 
 from __future__ import annotations
@@ -37,8 +39,8 @@ _GRID_COLOURS = {
     WEAK: (C_AMBER, C_AMBER_BG),
     POOR: (C_RED,   C_RED_BG),
 }
-_GRID_CELL_W = 180
-_GRID_CELL_H = 74
+_GRID_CELL_W = 230
+_GRID_CELL_H = 92
 
 # ── Layout constants ─────────────────────────────────────────────────────────
 _KEY_W        = 200
@@ -100,7 +102,7 @@ class ReportScreen(QWidget):
         self.resolution_val_label = QLabel("—")
 
         # ── 3x3 image coverage section ─────────────────────────────────────
-        self.grid_section_label = QLabel("Image Coverage (3 × 3)")
+        self.grid_section_label = QLabel("Details")
         self.grid_frame         = QFrame()
         self.grid_cells = [[QLabel("—") for _ in range(3)] for _ in range(3)]
         self.grid_legend        = QLabel(limits_text())
@@ -165,9 +167,9 @@ class ReportScreen(QWidget):
             for c in range(3):
                 lbl = self.grid_cells[r][c]
                 lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                lbl.setFixedSize(_GRID_CELL_W, _GRID_CELL_H)
+                lbl.setMinimumSize(_GRID_CELL_W, _GRID_CELL_H)
                 self.cov_grid.addWidget(lbl, r, c)
-        self.cov_grid.setColumnStretch(3, 1)
+
 
         # Camera matrix inner grid
         self.matrix_grid = QGridLayout(self.matrix_frame)
@@ -214,13 +216,12 @@ class ReportScreen(QWidget):
         self.scroll_main_layout = QVBoxLayout(self.scroll_content)
         self.scroll_main_layout.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
         self.scroll_main_layout.setSpacing(SPACING * 2)
-        self.scroll_main_layout.addWidget(self.grade_details)
-        self.scroll_main_layout.addLayout(self.summary_layout)
-        self.scroll_main_layout.addWidget(self.outlier_group)
         self.scroll_main_layout.addWidget(self.grid_section_label)
-        self.scroll_main_layout.addWidget(self.grid_frame)
-        self.scroll_main_layout.addWidget(self.grid_legend)
+        self.scroll_main_layout.addWidget(self.grade_details)
         self.scroll_main_layout.addWidget(self.grid_advice)
+        self.scroll_main_layout.addWidget(self.grid_legend)
+        self.scroll_main_layout.addWidget(self.outlier_group)
+        self.scroll_main_layout.addLayout(self.summary_layout)
         self.scroll_main_layout.addWidget(self.matrix_section_label)
         self.scroll_main_layout.addWidget(self.matrix_frame)
         self.scroll_main_layout.addWidget(self.dist_section_label)
@@ -243,6 +244,7 @@ class ReportScreen(QWidget):
         self.main_layout.addWidget(self.title_label)
         self.main_layout.addWidget(self.folder_label)
         self.main_layout.addWidget(self.grade_banner)
+        self.main_layout.addWidget(self.grid_frame, stretch=2)
         self.main_layout.addWidget(self.scroll_area, stretch=1)
         self.main_layout.addLayout(self.button_layout)
 
@@ -321,7 +323,7 @@ class ReportScreen(QWidget):
         self._update_dist(cal_result.dist_coeffs)
         self._update_board(board_config)
         self._update_outliers(cal_result)
-        self._update_grid(cal_result)
+        self._update_grid(cal_result, getattr(cal_result, "grade", None))
         self._update_grade(cal_result)
         self.save_button.setEnabled(True)
 
@@ -333,7 +335,7 @@ class ReportScreen(QWidget):
             self.grade_banner.hide(); self.grade_details.hide()
             return
         fg, bg = (C_GREEN, C_GREEN_BG) if g.passed else (C_RED, C_RED_BG)
-        self.grade_banner.setText(g.headline)
+        self.grade_banner.setText(getattr(g, "action", g.headline))
         self.grade_banner.setStyleSheet(
             f"font-size: 16pt; font-weight: bold; padding: 10px; border-radius: 4px;"
             f"color: rgb({fg[0]},{fg[1]},{fg[2]}); background: rgb({bg[0]},{bg[1]},{bg[2]});"
@@ -350,9 +352,13 @@ class ReportScreen(QWidget):
         bl = getattr(g, "blur_median_px", float("nan"))
         if bl == bl:
             parts.append(f"<b>Sharpness:</b> dot edge blur {bl:.1f} px (sharp is about 1 px).")
-        if g.coaching:
-            parts.append("<b>What to do:</b>")
-            parts += [f"&nbsp;&nbsp;&rarr; {html.escape(c)}" for c in g.coaching]
+        # Per-area photos are in the squares; only the rest is listed here.
+        from src.coverage import COL_NAMES, ROW_NAMES
+        areas = tuple(f"{r}-{c}" for r in ROW_NAMES for c in COL_NAMES) + ("Centre",)
+        other = [c for c in g.coaching if not c.startswith(areas)]
+        if other:
+            parts.append("<b>Also:</b>")
+            parts += [f"&nbsp;&nbsp;&rarr; {html.escape(c)}" for c in other]
         if g.worst_images:
             parts.append("<b>Worst photos:</b> " + ", ".join(
                 f"{html.escape(Path(p).name)} ({e:.1f} px)" for p, e in g.worst_images))
@@ -362,8 +368,8 @@ class ReportScreen(QWidget):
         self.grade_details.setText("<br>".join(parts))
         self.grade_banner.show(); self.grade_details.show()
 
-    def _update_grid(self, cal_result: CalibrationResult) -> None:
-        """Fill the 3x3 coverage grid (src/coverage.py)."""
+    def _update_grid(self, cal_result: CalibrationResult, g=None) -> None:
+        """Fill the 3x3 squares: what to do in each, then the numbers small."""
         try:
             grid = compute_grid(cal_result)
         except Exception as exc:  # noqa: BLE001 — never block the report
@@ -378,16 +384,20 @@ class ReportScreen(QWidget):
                 lbl = self.grid_cells[cell.row][cell.col]
                 fg, bg = _GRID_COLOURS[cell.status]
                 err = "—" if cell.points == 0 else f"{cell.rms_px:.2f} px"
+                big, how = g.area_todo(cell) if g is not None and hasattr(g, "area_todo") else ("", "")
                 lbl.setText(
-                    f"<b>{cell.name}</b><br>"
-                    f"{cell.points} points · {err}<br>"
-                    f"angles {cell.tilt_spread_deg:.0f}°"
+                    f"<span style='font-size:9pt'>{cell.name}</span><br>"
+                    f"<span style='font-size:20pt; font-weight:bold'>{big}</span><br>"
+                    + (f"<span style='font-size:10pt'>{how}</span><br>" if how else "")
+                    + f"<span style='font-size:8pt'>{cell.points} points · {err} · "
+                      f"angles {cell.tilt_spread_deg:.0f}°</span>"
                 )
                 lbl.setToolTip("\n".join(cell.problems()) or "Good")
                 lbl.setStyleSheet(
                     f"background: rgb({bg[0]},{bg[1]},{bg[2]});"
                     f"border: 1px solid rgb({fg[0]},{fg[1]},{fg[2]});"
-                    "border-radius: 4px; font-size: 9pt;"
+                    f"color: rgb({fg[0]},{fg[1]},{fg[2]});"
+                    "border-radius: 6px; font-size: 9pt;"
                 )
         advice = grid.advice()
         if advice:

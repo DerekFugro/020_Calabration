@@ -220,18 +220,11 @@ def _ascii(text: str) -> str:
 
 
 def _grade_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:
-    """Grade banner: pass/fail, reasons, what to shoot next (src/grading.py)."""
+    """Details under the squares: why, and anything the squares don't say (src/grading.py)."""
     g = getattr(cal_result, "grade", None)
     if g is None:
         return
-    _section(pdf, "Grade")
-    pdf.set_font("Helvetica", "B", 11)
-    if g.passed:
-        pdf.set_text_color(27, 94, 32)
-    else:
-        pdf.set_text_color(183, 28, 28)
-    pdf.multi_cell(_CW, 6, _ascii(g.headline), new_x="LMARGIN", new_y="NEXT")
-    pdf.set_text_color(0, 0, 0)
+    _section(pdf, "Details")
     pdf.set_font("Helvetica", size=8)
     rp = g.repeatability
     if rp is not None:
@@ -247,11 +240,14 @@ def _grade_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:
         pdf.multi_cell(_CW, 4.2, _ascii("- " + r), new_x="LMARGIN", new_y="NEXT")
     for w in getattr(g, "warnings", []):
         pdf.multi_cell(_CW, 4.2, _ascii("! " + w), new_x="LMARGIN", new_y="NEXT")
-    if g.coaching:
+    from src.coverage import COL_NAMES, ROW_NAMES
+    areas = tuple(f"{r}-{c}" for r in ROW_NAMES for c in COL_NAMES) + ("Centre",)
+    other = [c for c in g.coaching if not c.startswith(areas)]   # per-area: in the squares
+    if other:
         pdf.set_font("Helvetica", "B", 8)
-        pdf.cell(_CW, 4.5, "What to do:", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(_CW, 4.5, "Also:", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", size=8)
-        for c in g.coaching:
+        for c in other:
             pdf.multi_cell(_CW, 4.2, _ascii("* " + c), new_x="LMARGIN", new_y="NEXT")
     for p, e in g.worst_images:
         pdf.multi_cell(_CW, 4.2, _ascii(f"  worst photo: {Path(p).name}  {e:.2f} px"), new_x="LMARGIN", new_y="NEXT")
@@ -267,14 +263,15 @@ def _coverage_grid_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:
     """3x3 coloured grid of how well each part of the image is calibrated."""
     from src.coverage import GOOD, POOR, WEAK, compute_grid, limits_text
 
-    _section(pdf, "Image Coverage (3 x 3)")
+    _section(pdf, "Where to take more photos (3 x 3 areas of the picture)")
     try:
         grid = compute_grid(cal_result)
     except Exception as exc:  # noqa: BLE001 — never block the report
         _kv(pdf, "Not available:", _ascii(str(exc)))
         return
     fills = {GOOD: (200, 230, 201), WEAK: (255, 224, 178), POOR: (255, 205, 210)}
-    cw, ch = 50.0, 17.0
+    g = getattr(cal_result, "grade", None)
+    cw, ch = _CW / 3, 24.0
     if pdf.get_y() + 3 * ch + 30 > pdf.h - pdf.b_margin:
         pdf.add_page()
     x0, y0 = pdf.l_margin, pdf.get_y()
@@ -284,25 +281,23 @@ def _coverage_grid_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:
             pdf.set_fill_color(*fills[cell.status])
             pdf.rect(x, y, cw, ch, style="DF")
             err = "-" if cell.points == 0 else f"{cell.rms_px:.2f} px"
-            pdf.set_font("Helvetica", "B", 8)
-            pdf.set_xy(x, y + 1.5)
-            pdf.cell(cw, 4.5, f"{cell.name}  ({cell.status})", align="C")
+            big, how = g.area_todo(cell) if g is not None and hasattr(g, "area_todo") else (cell.status, "")
+            pdf.set_font("Helvetica", size=7)
+            pdf.set_xy(x, y + 1)
+            pdf.cell(cw, 3.5, cell.name, align="C")
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.set_xy(x, y + 5)
+            pdf.cell(cw, 7, _ascii(big), align="C")
             pdf.set_font("Helvetica", size=8)
-            pdf.set_xy(x, y + 6.5)
-            pdf.cell(cw, 4.5, f"{cell.points} points | {err}", align="C")
-            pdf.set_xy(x, y + 11)
-            pdf.cell(cw, 4.5, f"angles {cell.tilt_spread_deg:.0f} deg", align="C")
+            pdf.set_xy(x, y + 12.5)
+            pdf.cell(cw, 4, _ascii(how), align="C")
+            pdf.set_font("Helvetica", size=6.5)
+            pdf.set_xy(x, y + 18)
+            pdf.cell(cw, 4, _ascii(f"{cell.points} points | {err} | angles {cell.tilt_spread_deg:.0f} deg"),
+                     align="C")
     pdf.set_xy(x0, y0 + 3 * ch + 2)
     pdf.set_font("Helvetica", size=7)
     pdf.multi_cell(_CW, 3.6, _ascii(limits_text()), new_x="LMARGIN", new_y="NEXT")
-    advice = grid.advice()
-    pdf.set_font("Helvetica", size=8)
-    pdf.ln(1)
-    if advice:
-        for line in advice:
-            pdf.multi_cell(_CW, 4.2, _ascii("- " + line), new_x="LMARGIN", new_y="NEXT")
-    else:
-        pdf.multi_cell(_CW, 4.2, "All 9 areas are green.", new_x="LMARGIN", new_y="NEXT")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -352,12 +347,14 @@ def write_pdf(
     vr, vg, vb = (46, 125, 50) if passed else (183, 28, 28)
     pdf.set_fill_color(vr, vg, vb)
     pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 13)
-    badge_w = 80.0
-    pdf.set_x((_PAGE_W - badge_w) / 2)
-    pdf.cell(badge_w, 9, "PASS" if passed else "NOT PASSED", fill=True, align="C",
-             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "B", 12)
+    action = getattr(g, "action", "") if g is not None else "NOT PASSED — no grade"
+    pdf.multi_cell(_CW, 8, _ascii(action or ("PASS" if passed else "NOT PASSED")), fill=True,
+                   align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(0, 0, 0)
+
+    # ── The 3x3 squares come first: done, or how many photos where ────────
+    _coverage_grid_pdf(pdf, cal_result)
 
     # ── Summary ────────────────────────────────────────────────────────────
     cam = cal_result.camera_matrix
@@ -396,8 +393,6 @@ def write_pdf(
     _th(pdf, coeff_labels, [cw] * n)
     _tr(pdf, [f"{v:.6f}" for v in dist_flat], [cw] * n)
 
-    # ── 3x3 image coverage ────────────────────────────────────────────────
-    _coverage_grid_pdf(pdf, cal_result)
 
     # ── Board parameters ──────────────────────────────────────────────────
     _section(pdf, "Board Parameters")

@@ -99,3 +99,22 @@ def test_any_red_area_is_not_a_pass(monkeypatch):
     g = gr.grade(cal)
     assert not g.passed and any("Bottom-left" in r and "red" in r for r in g.reasons)
     assert any("Bottom-left: error 1.17" in c for c in g.coaching)
+
+
+def test_squares_say_done_or_how_many_photos():
+    """Derek 2026-11-02: the 3x3 squares tell the crew 'done' or 'get N more photos here'."""
+    from types import SimpleNamespace
+    from src.grading import GradeReport
+    rep = GradeReport(passed=False, headline="")
+    a = SimpleNamespace(name="Bottom-centre", status="poor")
+    b = SimpleNamespace(name="Centre", status="good")
+    c = SimpleNamespace(name="Top-left", status="weak")
+    rep._ask(a, 14, "board in this area")
+    rep._ask(a, 3, "tilt the board 20-45°")
+    rep.more_photos = 17
+    assert rep.area_todo(a) == ("+17 photos", "board in this area, tilt the board 20-45°")
+    assert rep.area_todo(b) == ("Done", "")
+    assert rep.area_todo(c) == ("OK", "")
+    assert rep.action.startswith("NOT PASSED") and "17 more photos" in rep.action
+    rep.passed = True
+    assert "you're done" in rep.action

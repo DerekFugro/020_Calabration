@@ -69,6 +69,36 @@ class GradeReport:
     left_out: list = field(default_factory=list)        # (path, why) left out by src/auto_clean.py
     blur_median_px: float = math.nan                    # dot edge blur, median over photos
     blurry_images: list = field(default_factory=list)   # (path, blur_px), worst first
+    area_photos: dict = field(default_factory=dict)     # 3x3 area name -> photos to take there
+    area_how: dict = field(default_factory=dict)        # 3x3 area name -> short "how" text
+
+    def _ask(self, cell, n: int, how: str) -> None:
+        self.area_photos[cell.name] = self.area_photos.get(cell.name, 0) + n
+        if how not in self.area_how.get(cell.name, ""):
+            self.area_how[cell.name] = (self.area_how.get(cell.name, "") + ", " + how).strip(", ")
+
+    def area_todo(self, cell) -> tuple[str, str]:
+        """(big, small) text for one 3x3 square: what to do there."""
+        n = self.area_photos.get(cell.name, 0)
+        if n:
+            return f"+{n} photo{'s' if n > 1 else ''}", self.area_how.get(cell.name, "")
+        if cell.status == "poor":
+            return "Retake", "photos here fit badly"
+        if cell.status == "weak":
+            return "OK", ""
+        return "Done", ""
+
+    @property
+    def action(self) -> str:
+        """The one line the crew needs: done, get more photos, or retake."""
+        if self.passed:
+            return "PASS — you're done. Click Save."
+        if self.hard_stops:
+            return "NOT PASSED — this set must not be used. Retake the photos."
+        if self.more_photos:
+            return (f"NOT PASSED — get about {self.more_photos} more photo{'s' if self.more_photos > 1 else ''} "
+                    f"where the squares below ask for them.")
+        return "NOT PASSED — retake the photos (see the details below)."
 
     def as_text(self) -> str:
         lines = [self.headline]
@@ -239,10 +269,12 @@ def grade(cal_result) -> GradeReport:
                 per = c.points / c.images if c.images else DEFAULT_POINTS_PER_PHOTO
                 need = max(1, math.ceil((POINTS_GOOD - c.points) / max(per, 1)))
                 more += need
+                rep._ask(c, need, "board in this area")
                 rep.coaching.append(f"{c.name}: only {c.points} points. Take about {need} more "
                                     f"photo{'s' if need > 1 else ''} with the board in this part of the picture.")
             if c.points and c.tilt_status != GOOD:
                 more += TILT_PHOTOS_PER_AREA
+                rep._ask(c, TILT_PHOTOS_PER_AREA, "tilt the board 20-45°")
                 rep.coaching.append(f"{c.name}: board angles vary only {c.tilt_spread_deg:.0f}°. "
                                     f"Take {TILT_PHOTOS_PER_AREA} photos here with the board tilted "
                                     f"20-45° up, down and sideways.")
@@ -257,6 +289,7 @@ def grade(cal_result) -> GradeReport:
             for c in red:
                 if c.points and c.error_status == POOR and c.points_status == GOOD:
                     more += RED_ERROR_PHOTOS
+                    rep._ask(c, RED_ERROR_PHOTOS, "sharp, held still")
                     rep.coaching.append(f"{c.name}: error {c.rms_px:.2f} px (limit 1.0). Take about "
                                         f"{RED_ERROR_PHOTOS} more sharp photos with the board in this part of "
                                         f"the picture, held still and tilted.")
