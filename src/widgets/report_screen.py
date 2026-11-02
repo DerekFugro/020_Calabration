@@ -105,6 +105,10 @@ class ReportScreen(QWidget):
         self.grid_section_label = QLabel("Details")
         self.grid_frame         = QFrame()
         self.grid_cells = [[QLabel("—") for _ in range(3)] for _ in range(3)]
+        self.steady_box         = QLabel("")
+        self.steady_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.steady_box.setWordWrap(True)
+        self.steady_box.setMinimumHeight(64)
         self.grid_legend        = QLabel(limits_text())
         self.grid_legend.setWordWrap(True)
         self.grid_advice        = QLabel("")
@@ -245,6 +249,7 @@ class ReportScreen(QWidget):
         self.main_layout.addWidget(self.folder_label)
         self.main_layout.addWidget(self.grade_banner)
         self.main_layout.addWidget(self.grid_frame, stretch=2)
+        self.main_layout.addWidget(self.steady_box)
         self.main_layout.addWidget(self.scroll_area, stretch=1)
         self.main_layout.addLayout(self.button_layout)
 
@@ -336,6 +341,19 @@ class ReportScreen(QWidget):
             return
         fg, bg = (C_GREEN, C_GREEN_BG) if g.passed else (C_RED, C_RED_BG)
         self.grade_banner.setText(getattr(g, "action", g.headline))
+        if hasattr(g, "steady"):
+            st, big, small = g.steady
+            fg, bg = {"good": (C_GREEN, C_GREEN_BG), "poor": (C_RED, C_RED_BG)}.get(st, (C_AMBER, C_AMBER_BG))
+            self.steady_box.setText(
+                f"<span style='font-size:9pt'>Lens steady (photos split in two, solved separately)</span><br>"
+                f"<span style='font-size:20pt; font-weight:bold'>{big}</span>&nbsp;&nbsp;"
+                f"<span style='font-size:10pt'>{small}</span>")
+            self.steady_box.setStyleSheet(
+                f"background: rgb({bg[0]},{bg[1]},{bg[2]}); border: 1px solid rgb({fg[0]},{fg[1]},{fg[2]});"
+                f"color: rgb({fg[0]},{fg[1]},{fg[2]}); border-radius: 6px; padding: 4px;")
+            self.steady_box.show()
+        else:
+            self.steady_box.hide()
         self.grade_banner.setStyleSheet(
             f"font-size: 16pt; font-weight: bold; padding: 10px; border-radius: 4px;"
             f"color: rgb({fg[0]},{fg[1]},{fg[2]}); background: rgb({bg[0]},{bg[1]},{bg[2]});"

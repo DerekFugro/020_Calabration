@@ -89,12 +89,27 @@ class GradeReport:
         return "Done", ""
 
     @property
+    def steady(self) -> tuple[str, str, str]:
+        """(status, big, small) for the lens-steady box under the squares.
+        status: 'good' | 'poor' | 'none' (not checked)."""
+        r = self.repeatability
+        limit = REPEAT_MAX_MRAD * 10
+        if r is None:
+            return "none", "Not checked", f"needs at least {2 * MIN_IMAGES_PER_HALF} usable photos"
+        if r.est_error_p95_mrad <= REPEAT_MAX_MRAD:
+            return "good", f"{r.at_10m_mm:.0f} mm", f"lens steady: error at 10 m (limit {limit:.0f} mm)"
+        return "poor", f"{r.at_10m_mm:.0f} mm", (f"lens not steady: error at 10 m (limit {limit:.0f} mm). Spread the "
+                                                 "board over the whole picture all through the shoot, hold it still.")
+
+    @property
     def action(self) -> str:
         """The one line the crew needs: done, get more photos, or retake."""
         if self.passed:
             return "PASS — you're done. Click Save."
         if self.hard_stops:
             return "NOT PASSED — this set must not be used. Retake the photos."
+        if self.more_photos == 0 and self.steady[0] == "poor":
+            return "NOT PASSED — the lens isn't steady yet (box below the squares). Retake the photos."
         if self.more_photos:
             return (f"NOT PASSED — get about {self.more_photos} more photo{'s' if self.more_photos > 1 else ''} "
                     f"where the squares below ask for them.")

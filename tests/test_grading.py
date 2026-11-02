@@ -118,3 +118,17 @@ def test_squares_say_done_or_how_many_photos():
     assert rep.action.startswith("NOT PASSED") and "17 more photos" in rep.action
     rep.passed = True
     assert "you're done" in rep.action
+
+
+def test_lens_steady_box_and_banner():
+    """A fail on repeatability alone must point at the lens-steady box, not 'see the details'."""
+    from src.grading import GradeReport, Repeatability
+    rep = GradeReport(passed=False, headline="")
+    rep.repeatability = Repeatability(est_error_p95_mrad=1.5, est_error_mean_mrad=1.0,
+                                      halves_raw_mean_mrad=1.0, images_per_half=50)
+    assert rep.steady[0] == "poor" and rep.steady[1] == "15 mm"
+    assert "lens isn't steady" in rep.action
+    rep.repeatability = Repeatability(0.6, 0.4, 0.4, 50)
+    assert rep.steady[0] == "good"
+    rep.repeatability = None
+    assert rep.steady[0] == "none"

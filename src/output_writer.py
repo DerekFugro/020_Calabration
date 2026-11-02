@@ -296,6 +296,13 @@ def _coverage_grid_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:
             pdf.cell(cw, 4, _ascii(f"{cell.points} points | {err} | angles {cell.tilt_spread_deg:.0f} deg"),
                      align="C")
     pdf.set_xy(x0, y0 + 3 * ch + 2)
+    if g is not None and hasattr(g, "steady"):
+        st, big, small = g.steady
+        pdf.set_fill_color(*{"good": fills[GOOD], "poor": fills[POOR]}.get(st, fills[WEAK]))
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.multi_cell(_CW, 7, _ascii(f"Lens steady: {big}  -  {small}"), border=1, fill=True, align="C",
+                       new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1)
     pdf.set_font("Helvetica", size=7)
     pdf.multi_cell(_CW, 3.6, _ascii(limits_text()), new_x="LMARGIN", new_y="NEXT")
 
