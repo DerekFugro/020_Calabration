@@ -196,6 +196,6 @@ def test_cli_auto_on_dot_images(dot_sets, capsys):
     import cli
     _, imgs = dot_sets["Randot-003"]
     folder = str(pathlib.Path(imgs[0][0]).parent)
-    assert cli.main([folder, "--min-blur", "0"]) == 0
+    assert cli.main([folder]) == 0
     out = capsys.readouterr().out
     assert "Auto-detected board: Randot-003" in out and "RMS" in out

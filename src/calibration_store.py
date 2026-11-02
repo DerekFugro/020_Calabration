@@ -62,10 +62,6 @@ INTRINSIC_TYPES: dict[str, str] = {
 # Owners VOID a bad folder by appending this suffix; it must never be selected.
 VOID_MARKER = ".VOID"
 
-# Verdicts (src/quality.py) a calibration may carry into the store.  Anything
-# else — including a missing verdict — is refused.
-PUBLISHABLE_VERDICTS: frozenset[str] = frozenset({"Excellent", "Acceptable"})
-
 _ROLE_RE   = re.compile(r"^[A-Z0-9][A-Z0-9-]*$")
 _SERIAL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
 
@@ -141,18 +137,14 @@ def validate_subject(role: str, serial: str) -> tuple[str, str]:
 
 
 def check_publishable(yaml_path: str | Path, passed: bool | None = None) -> str:
-    """Refuse anything that is not a passing calibration.  Returns the verdict.
+    """Refuse anything that is not a passing calibration.  Returns "PASS".
 
-    Two independent checks, because the store is append-only and a mistake here
-    cannot be undone:
+    The store is append-only, so two independent checks:
 
-    1. The verdict recorded IN THE FILE, so a caller cannot wave a failing
-       calibration through by passing the wrong flag.
-    2. *passed* — the run's own pass/fail (`QualityReport.pass_verdict`), which
-       also catches "good RMS but too few images", something the verdict alone
-       does not show.  Pass None only when the caller has no report.
-
-    The file is read first so the error can say WHICH problem it is.
+    1. The grade recorded IN THE FILE (src/grading.py), so a caller cannot wave
+       a failing calibration through by passing the wrong flag.  A file with no
+       grade (made before 2026-10-31) is refused: process the photos again.
+    2. *passed* — the run's own pass/fail.  None when the caller has no run.
 
     Raises StoreError if the calibration did not pass.
     """
@@ -161,50 +153,20 @@ def check_publishable(yaml_path: str | Path, passed: bool | None = None) -> str:
         data = yaml.safe_load(src.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError) as exc:
         raise StoreError(f"Could not read the calibration file: {exc}") from None
+    tail = "Not published — the local CAL_ files were still written to the image folder."
 
-    verdict = str(data.get("verdict", "")).strip()
-    tail = ("Not published — the local CAL_ files were still written to the "
-            "image folder.")
-
-    # Files written since 2026-10-31 carry a grade (src/grading.py: coverage,
-    # repeatability, sanity, RMS < 2 px).  When present it decides: the RMS
-    # verdict alone did not predict real-world error on surveyed targets.
-    grade = data.get("grade")
-    if isinstance(grade, dict) and "passed" in grade:
-        if not grade.get("passed"):
-            why = "; ".join(str(x) for x in (grade.get("hard_stops") or []) + (grade.get("reasons") or []))
-            raise StoreError(
-                f"The calibration did not pass its grade: {grade.get('headline', '')} "
-                f"{why} {tail}".strip()
-            )
-        if passed is False:
-            raise StoreError(f"The run did not pass its grade. {tail}")
-        return verdict or "PASS"
-
-    if not verdict:
+    grade = data.get("grade") if isinstance(data, dict) else None
+    if not isinstance(grade, dict) or "passed" not in grade:
         raise StoreError(
-            f"The calibration file records no verdict, so it cannot be shown "
-            f"to have passed. {tail}"
-        )
-
-    if verdict not in PUBLISHABLE_VERDICTS:
+            "The calibration file has no grade, so it cannot be shown to have passed "
+            f"(files from before 2026-10-31).  Process the photos again. {tail}")
+    if not grade.get("passed"):
+        why = "; ".join(str(x) for x in (grade.get("hard_stops") or []) + (grade.get("reasons") or []))
         raise StoreError(
-            f"Verdict is {verdict!r} — only "
-            f"{' or '.join(sorted(PUBLISHABLE_VERDICTS))} may go into the "
-            f"store, which is append-only and cannot be cleaned up afterwards. "
-            f"{tail} Recapture at more varied angles, or drop the outliers on "
-            f"the report screen and recalibrate."
-        )
-
+            f"The calibration did not pass its grade: {grade.get('headline', '')} {why} {tail}".strip())
     if passed is False:
-        used = data.get("image_count_used", "?")
-        raise StoreError(
-            f"Verdict is {verdict!r}, but the run did not pass — usually too "
-            f"few accepted images ({used} used). {tail} Capture more images of "
-            f"the board and save again."
-        )
-
-    return verdict
+        raise StoreError(f"The run did not pass its grade. {tail}")
+    return "PASS"
 
 
 def calibration_type(role: str) -> str:
@@ -342,7 +304,7 @@ def publish(
     Each camera gets its own folder, named for it by type.  Replacing a file
     that is already there is refused — the store is append-only.
 
-    *passed* is the run's own verdict (`QualityReport.pass_verdict`).  A failed
+    *passed* is the run's own pass/fail (its grade).  A failed
     calibration is refused here and stays next to its images; see
     check_publishable.
 

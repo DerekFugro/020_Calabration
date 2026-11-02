@@ -31,15 +31,7 @@ from src.board import BoardConfig
 from src.calibrator import CalibrationResult
 from src.detector import DetectionResult
 from src.image_filter import FilterResult
-from src.quality import QualityReport
 
-
-# ── Verdict colours (R, G, B) ────────────────────────────────────────────────
-_VERDICT_COLOUR = {
-    "Excellent":          (46, 125, 50),
-    "Acceptable":         (230, 119, 0),
-    "Needs Improvement":  (183, 28, 28),
-}
 
 # ── Page geometry (A4 portrait, mm) ─────────────────────────────────────────
 _PAGE_W = 210
@@ -74,7 +66,6 @@ def _unique_path(folder: Path, stem: str, ext: str) -> Path:
 
 def write_yaml(
     cal_result: CalibrationResult,
-    quality: QualityReport,
     board_config: BoardConfig,
     serial: str,
     image_folder: str | Path,
@@ -102,7 +93,6 @@ def write_yaml(
         "calibration_datetime":     dt.isoformat(timespec="seconds"),
         "rms_reprojection_error":   round(float(cal_result.rms), 6),
         "image_count_used":         cal_result.image_count_used,
-        "verdict":                  quality.verdict,
         "photos":                   _folder_summary(cal_result, folder),
         "camera_matrix": {
             "rows": 3,
@@ -321,7 +311,6 @@ def _coverage_grid_pdf(pdf: FPDF, cal_result: CalibrationResult) -> None:
 
 def write_pdf(
     cal_result: CalibrationResult,
-    quality: QualityReport,
     board_config: BoardConfig,
     serial: str,
     detections: list[DetectionResult],
@@ -359,7 +348,7 @@ def write_pdf(
 
     # ── One rating: the grade (src/grading.py) ─────────────────────────────
     g = getattr(cal_result, "grade", None)
-    passed = bool(g.passed) if g is not None else bool(quality.pass_verdict)
+    passed = bool(g is not None and g.passed)
     vr, vg, vb = (46, 125, 50) if passed else (183, 28, 28)
     pdf.set_fill_color(vr, vg, vb)
     pdf.set_text_color(255, 255, 255)
@@ -380,7 +369,7 @@ def write_pdf(
     _section(pdf, "Calibration Summary")
     _kv(pdf, "RMS Reprojection Error:", f"{cal_result.rms:.4f} px")
     _kv(pdf, "Images Used:",
-        f"{cal_result.image_count_used}  (need >= {quality.image_count_needed})")
+        str(cal_result.image_count_used))
     _kv(pdf, "Focal Length:",   f"fx = {fx:.2f} px     fy = {fy:.2f} px")
     _kv(pdf, "Principal Point:", f"cx = {cx:.2f} px     cy = {cy:.2f} px")
     _kv(pdf, "Image Resolution:",
@@ -424,24 +413,6 @@ def write_pdf(
         _kv(pdf, "Cell Height (mm):",  f"{board_config.cell_height_mm:.4f}")
         _kv(pdf, "Detection:",         "Plain chessboard (ArUco markers ignored)")
 
-    # ── Recommended action (Needs Improvement only) ───────────────────────
-    if g is None and not passed:
-        pdf.ln(3)
-        pdf.set_fill_color(255, 235, 238)
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.cell(_CW, 6, "  [!]  Recommended Action",
-                 fill=True, new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Helvetica", size=8)
-        advice = (
-            "RMS error exceeds 1.0 px. To improve:\n"
-            "  - Capture 20-30 images at varied board angles (+/-30-45 degrees)\n"
-            "  - Ensure the board is sharply in focus in every shot\n"
-            "  - Cover all corners and edges of the camera frame\n"
-            "  - Do not change focal length or aperture between shots"
-        )
-        pdf.set_fill_color(255, 248, 249)
-        pdf.multi_cell(_CW, 5, advice, border=1, fill=True)
-
     # ── Per-image results table ────────────────────────────────────────────
     _section(pdf, "Per-Image Results")
     reason_w = _CW - 58 - 20 - 20 - 22
@@ -476,7 +447,6 @@ def write_pdf(
 
 def write_outputs(
     cal_result: CalibrationResult,
-    quality: QualityReport,
     board_config: BoardConfig,
     serial: str,
     detections: list[DetectionResult],
@@ -491,9 +461,9 @@ def write_outputs(
     calibration store must stamp the store file with the SAME datetime.
     """
     dt = dt or datetime.now()
-    yaml_path = write_yaml(cal_result, quality, board_config, serial, image_folder, dt, role)
+    yaml_path = write_yaml(cal_result, board_config, serial, image_folder, dt, role)
     pdf_path = write_pdf(
-        cal_result, quality, board_config, serial,
+        cal_result, board_config, serial,
         detections, filter_results, image_folder, dt,
     )
     return yaml_path, pdf_path

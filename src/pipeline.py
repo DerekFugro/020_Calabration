@@ -1,7 +1,11 @@
 """pipeline.py — one camera folder, start to finish, no GUI.
 
-auto-detect board -> detect -> filter -> calibrate -> grade -> compare to the
-filed intrinsic.  Used by the van table (Load Intrinsic tab) and the CLI.
+The ONE calibration path.  One camera, Whole van and the CLI all call
+run_folder(), so a fix here fixes all three:
+
+  raw -> PNG (if any) -> board (auto-detect or given) -> detect -> filter
+  -> wrong-size check -> unusable photos to NotUsed -> calibrate (bad photos
+  left out automatically) -> grade -> compare to the filed intrinsic.
 """
 
 from __future__ import annotations
@@ -10,15 +14,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from src.auto_detect import auto_detect_board
-from src.boards import list_boards
-from src.calibrator import calibrate
-from src.detector import detect_images
-from src.image_filter import filter_detections
-from src.quality import evaluate
-from src.utils import find_images
-
-MIN_DOTS_PER_IMAGE = 12
+MIN_DOTS_PER_IMAGE = 12      # dot boards: enough dots for a stable homography
+CHESS_MIN_CORNERS = 6
+CHESS_MIN_BLUR = 20.0        # chessboards only; dot boards use the dot-edge blur check
 
 
 def subsample(paths: list[str], n: int) -> list[str]:
@@ -33,11 +31,11 @@ def subsample(paths: list[str], n: int) -> list[str]:
 class FolderRun:
     folder: str
     board: object = None
+    board_note: str = ""                    # auto-detect summary
     detections: list = field(default_factory=list)
     filter_results: list = field(default_factory=list)
     cal: object = None
-    quality: object = None
-    vs_filed_10m_mm: float | None = None   # p95 difference to filed XML at 10 m
+    vs_filed_10m_mm: float | None = None    # p95 difference to filed XML at 10 m
     moved: list = field(default_factory=list)   # (file, reason) moved to NotUsed
     move_note: str = ""
     error: str = ""
@@ -46,45 +44,76 @@ class FolderRun:
     def grade(self):
         return getattr(self.cal, "grade", None)
 
+    @property
+    def passed(self) -> bool:
+        g = self.grade
+        return bool(g is not None and g.passed and not self.error)
+
 
 def run_folder(folder: str, max_images: int = 0, boards=None, board=None,
-               filed_xml: str = "", min_blur: float = 20.0,
-               progress_cb=None, move_unused: bool = False) -> FolderRun:
+               filed_xml: str = "", progress_cb=None, change_folder: bool = True) -> FolderRun:
+    """Calibrate and grade one folder of board photos.  Never raises: errors land in .error.
+
+    change_folder: allowed to write into the photo folder — convert .raw files to
+    PNG and move unusable photos to NotUsed.  The GUI always does; the CLI only
+    when asked, so old data can be checked without rearranging it.  A quick look
+    (max_images > 0) never changes the folder.
+    """
+    change_folder = change_folder and not max_images
     say = progress_cb or (lambda _m: None)
     r = FolderRun(folder=folder)
     try:
-        boards = boards if boards is not None else list_boards()
+        from src.utils import find_images
+        if change_folder:
+            from src.raw_loader import convert_folder, pending_conversions
+            if pending_conversions(folder):
+                converted, failed = convert_folder(folder, progress_cb=say)
+                say(f"Raw conversion: {len(converted)} converted"
+                    + (f", {len(failed)} FAILED" if failed else ""))
         paths = subsample(find_images(folder), max_images)
         if not paths:
-            r.error = "no photos"; return r
+            r.error = "No JPG, PNG or RAW photos in this folder."
+            return r
+
         if board is None:
-            say("finding the board")
-            res = auto_detect_board(paths, boards)
+            from src.boards import list_boards
+            from src.auto_detect import auto_detect_board
+            say("Finding the board…")
+            res = auto_detect_board(paths, boards if boards is not None else list_boards(),
+                                    progress_cb=say)
+            r.board_note = res.summary()
             if res.board is None:
-                r.error = "no calibration board found"; return r
+                r.error = (res.summary() + ".  Pick the board under Advanced, or add it in "
+                           "the Boards tab, and run again.")
+                return r
             board = res.board
         r.board = board
-        say(f"detecting {board.name} in {len(paths)} photos")
-        r.detections = detect_images(paths, board, verbose=False)
+
+        from src.detector import detect_images
+        from src.image_filter import filter_detections
+        say(f"Detecting {board.name} in {len(paths)} photos…")
+        r.detections = detect_images(paths, board, verbose=False, progress_cb=say)
         r.filter_results = filter_detections(
             r.detections,
-            min_corners=MIN_DOTS_PER_IMAGE if board.is_dots else 6,
-            min_blur=0.0 if board.is_dots else min_blur)
+            min_corners=MIN_DOTS_PER_IMAGE if board.is_dots else CHESS_MIN_CORNERS,
+            min_blur=0.0 if board.is_dots else CHESS_MIN_BLUR)
+
         from src.not_used import mark_wrong_size, move_unusable
         mark_wrong_size(r.detections, r.filter_results)
-        if move_unused and not max_images:
+        if change_folder:
             r.moved, r.move_note = move_unusable(folder, r.detections, r.filter_results)
             if r.move_note:
                 say(r.move_note)
-        say("calibrating")
+
+        say("Calibrating…")
         from src.auto_clean import calibrate_auto
         r.cal = calibrate_auto(r.detections, r.filter_results, board, progress_cb=say)
-        r.quality = evaluate(r.cal)
-        say("grading")
-        from src.grading import grade, ray_disagreement_mrad
+
+        say("Grading: coverage and repeatability…")
+        from src.grading import board_warning, grade, ray_disagreement_mrad
         r.cal.grade = grade(r.cal)
-        from src.grading import board_warning
         board_warning(r.cal.grade, board)
+
         if filed_xml:
             from src.van_scan import read_filed_xml
             f = read_filed_xml(filed_xml)

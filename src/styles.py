@@ -25,18 +25,8 @@ C_RED_BG       = (74, 20, 20)
 # ── Layout constants ─────────────────────────────────────────────────────────
 MARGIN      = 14
 SPACING     = 8
-ROW_H       = 28
 BUTTON_H    = 32
 INPUT_H     = 28
-SECTION_H   = 24
-BADGE_H     = 40
-
-# ── Verdict → (text_rgb, bg_rgb) ─────────────────────────────────────────────
-VERDICT_COLOURS = {
-    "Excellent":          (C_GREEN, C_GREEN_BG),
-    "Acceptable":         (C_AMBER, C_AMBER_BG),
-    "Needs Improvement":  (C_RED,   C_RED_BG),
-}
 
 
 def build_dark_palette() -> QPalette:

@@ -3,7 +3,6 @@
 Covers:
   - BoardConfig.get_all_object_points() shape, dtype, spacing
   - image_filter.filter_detection() acceptance / rejection logic
-  - quality.evaluate() verdict thresholds and pass/fail logic
   - calibrator.calibrate() with synthetic point data
 """
 
@@ -13,16 +12,10 @@ import cv2
 import numpy as np
 import pytest
 
-from src.board import BoardConfig, DEFAULT_CELL_WIDTH_MM, DEFAULT_CELL_HEIGHT_MM
+from src.board import BoardConfig
 from src.detector import DetectionResult
 from src.image_filter import filter_detection, filter_detections, MIN_CORNERS, MIN_BLUR_SCORE
 from src.calibrator import CalibrationResult, calibrate
-from src.quality import (
-    evaluate,
-    VERDICT_EXCELLENT,
-    VERDICT_ACCEPTABLE,
-    VERDICT_NEEDS_IMPROVEMENT,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -227,61 +220,6 @@ class TestImageFilter:
         assert results[0].accepted is True
         assert results[1].accepted is False
         assert results[2].accepted is False
-
-
-# ---------------------------------------------------------------------------
-# quality.evaluate
-# ---------------------------------------------------------------------------
-
-class TestQualityVerdicts:
-
-    def test_verdict_excellent(self):
-        report = evaluate(_make_cal_result(0.3))
-        assert report.verdict == VERDICT_EXCELLENT
-
-    def test_verdict_excellent_boundary(self):
-        """RMS just below 0.5 → Excellent."""
-        report = evaluate(_make_cal_result(0.499))
-        assert report.verdict == VERDICT_EXCELLENT
-
-    def test_verdict_acceptable_at_threshold(self):
-        """RMS exactly 0.5 → Acceptable (not Excellent)."""
-        report = evaluate(_make_cal_result(0.5))
-        assert report.verdict == VERDICT_ACCEPTABLE
-
-    def test_verdict_acceptable_midrange(self):
-        report = evaluate(_make_cal_result(0.7))
-        assert report.verdict == VERDICT_ACCEPTABLE
-
-    def test_verdict_acceptable_at_upper_boundary(self):
-        """RMS exactly 1.0 → Acceptable (not Needs Improvement)."""
-        report = evaluate(_make_cal_result(1.0))
-        assert report.verdict == VERDICT_ACCEPTABLE
-
-    def test_verdict_needs_improvement(self):
-        report = evaluate(_make_cal_result(1.2))
-        assert report.verdict == VERDICT_NEEDS_IMPROVEMENT
-
-    def test_pass_verdict_requires_min_images(self):
-        report = evaluate(_make_cal_result(0.3, image_count=10), min_images=15)
-        assert report.pass_verdict is False
-
-    def test_pass_verdict_with_sufficient_images(self):
-        report = evaluate(_make_cal_result(0.3, image_count=20), min_images=15)
-        assert report.pass_verdict is True
-
-    def test_pass_verdict_false_when_rms_too_high(self):
-        report = evaluate(_make_cal_result(1.2, image_count=20), min_images=15)
-        assert report.pass_verdict is False
-
-    def test_report_has_message(self):
-        report = evaluate(_make_cal_result(0.3))
-        assert isinstance(report.message, str)
-        assert len(report.message) > 0
-
-    def test_needs_improvement_message_contains_advice(self):
-        report = evaluate(_make_cal_result(1.5, image_count=20))
-        assert "1.0" in report.message or "RMS" in report.message
 
 
 # ---------------------------------------------------------------------------

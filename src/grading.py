@@ -306,10 +306,10 @@ def grade(cal_result) -> GradeReport:
     if rep.passed:
         rep.headline = "PASS: good enough to use."
     elif rep.hard_stops:
-        rep.headline = "FAIL: this calibration must not be used."
+        rep.headline = "NOT PASSED: this calibration must not be used."
     elif more:
-        rep.headline = (f"NOT GOOD ENOUGH: take about {more} more photo{'s' if more > 1 else ''} "
+        rep.headline = (f"NOT PASSED: take about {more} more photo{'s' if more > 1 else ''} "
                         f"in the areas listed.")
     else:
-        rep.headline = "NOT GOOD ENOUGH: retake the photos, see the reasons."
+        rep.headline = "NOT PASSED: retake the photos, see the reasons."
     return rep

@@ -20,7 +20,6 @@ from src.calibrator import calibrate
 from src.detector import detect_images
 from src.image_filter import filter_detections
 from src.output_writer import write_outputs
-from src.quality import evaluate
 
 
 # ── Synthetic image generation ────────────────────────────────────────────────
@@ -153,7 +152,7 @@ class TestFullPipeline:
     """
 
     @pytest.fixture(scope="class")
-    def cal_and_quality(self, pipeline_results, board_cfg):
+    def calibrated(self, pipeline_results, board_cfg):
         detections, filter_results = pipeline_results
         accepted = sum(f.accepted for f in filter_results)
         if accepted < 4:
@@ -161,39 +160,32 @@ class TestFullPipeline:
                 f"Only {accepted} image(s) accepted — need ≥ 4 for calibration."
             )
         cal_result = calibrate(detections, filter_results, board_cfg)
-        quality    = evaluate(cal_result)
-        return cal_result, quality
+        return cal_result, None
 
-    def test_calibration_returns_3x3_camera_matrix(self, cal_and_quality):
-        cal_result, _ = cal_and_quality
+    def test_calibration_returns_3x3_camera_matrix(self, calibrated):
+        cal_result, _ = calibrated
         assert cal_result.camera_matrix.shape == (3, 3)
 
-    def test_calibration_rms_is_finite_positive(self, cal_and_quality):
-        cal_result, _ = cal_and_quality
+    def test_calibration_rms_is_finite_positive(self, calibrated):
+        cal_result, _ = calibrated
         assert np.isfinite(cal_result.rms)
         assert cal_result.rms > 0
 
-    def test_dist_coeffs_shape(self, cal_and_quality):
-        cal_result, _ = cal_and_quality
+    def test_dist_coeffs_shape(self, calibrated):
+        cal_result, _ = calibrated
         rows, cols = cal_result.dist_coeffs.shape
         assert rows == 1
         assert 4 <= cols <= 14
 
-    def test_quality_verdict_is_string(self, cal_and_quality):
-        _, quality = cal_and_quality
-        assert isinstance(quality.verdict, str)
-        assert quality.verdict in {"Excellent", "Acceptable", "Needs Improvement"}
-
     def test_write_outputs_creates_yaml_and_pdf(
-        self, tmp_path, cal_and_quality, pipeline_results, board_cfg, synth_images
+        self, tmp_path, calibrated, pipeline_results, board_cfg, synth_images
     ):
-        cal_result, quality = cal_and_quality
+        cal_result, _ = calibrated
         detections, filter_results = pipeline_results
         output_dir = str(tmp_path)
 
         yaml_path, pdf_path = write_outputs(
             cal_result,
-            quality,
             board_cfg,
             serial="INTTEST001",
             detections=detections,
@@ -205,14 +197,13 @@ class TestFullPipeline:
         assert pdf_path.exists(),  f"PDF not found:  {pdf_path}"
 
     def test_yaml_parses_and_has_required_keys(
-        self, tmp_path, cal_and_quality, pipeline_results, board_cfg
+        self, tmp_path, calibrated, pipeline_results, board_cfg
     ):
-        cal_result, quality = cal_and_quality
+        cal_result, _ = calibrated
         detections, filter_results = pipeline_results
 
         yaml_path, _ = write_outputs(
             cal_result,
-            quality,
             board_cfg,
             serial="INTTEST002",
             detections=detections,
@@ -228,7 +219,6 @@ class TestFullPipeline:
             "calibration_datetime",
             "rms_reprojection_error",
             "image_count_used",
-            "verdict",
             "camera_matrix",
             "dist_coeffs",
             "image_resolution",
@@ -238,14 +228,13 @@ class TestFullPipeline:
         assert not missing, f"YAML missing keys: {missing}"
 
     def test_yaml_camera_matrix_is_3x3(
-        self, tmp_path, cal_and_quality, pipeline_results, board_cfg
+        self, tmp_path, calibrated, pipeline_results, board_cfg
     ):
-        cal_result, quality = cal_and_quality
+        cal_result, _ = calibrated
         detections, filter_results = pipeline_results
 
         yaml_path, _ = write_outputs(
             cal_result,
-            quality,
             board_cfg,
             serial="INTTEST003",
             detections=detections,
@@ -262,14 +251,13 @@ class TestFullPipeline:
         assert len(cm["data"]) == 9
 
     def test_pdf_is_non_empty(
-        self, tmp_path, cal_and_quality, pipeline_results, board_cfg
+        self, tmp_path, calibrated, pipeline_results, board_cfg
     ):
-        cal_result, quality = cal_and_quality
+        cal_result, _ = calibrated
         detections, filter_results = pipeline_results
 
         _, pdf_path = write_outputs(
             cal_result,
-            quality,
             board_cfg,
             serial="INTTEST004",
             detections=detections,
@@ -282,14 +270,13 @@ class TestFullPipeline:
         assert len(content) > 1024, "PDF suspiciously small"
 
     def test_output_filename_matches_convention(
-        self, tmp_path, cal_and_quality, pipeline_results, board_cfg
+        self, tmp_path, calibrated, pipeline_results, board_cfg
     ):
-        cal_result, quality = cal_and_quality
+        cal_result, _ = calibrated
         detections, filter_results = pipeline_results
 
         yaml_path, pdf_path = write_outputs(
             cal_result,
-            quality,
             board_cfg,
             serial="SN-CONV",
             detections=detections,

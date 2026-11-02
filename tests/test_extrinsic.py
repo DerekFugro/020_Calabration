@@ -11,7 +11,7 @@ from src.extrinsic.geo import latlon_to_grid_m, true_north_in_grid_deg
 from src.extrinsic.intrinsic_source import from_file
 from src.extrinsic.oldschool import read_van_pose
 from src.extrinsic.outputs import opk
-from src.extrinsic.solve import (ENU2NED, ground_height, in_van, pointing, rot_zyx, solve_setup,
+from src.extrinsic.solve import (ENU2NED, in_van, pointing, rot_zyx, solve_setup,
                                  zyx_from_rot)
 from src.extrinsic.targets import detect_balls, detect_wall, predict_pose
 

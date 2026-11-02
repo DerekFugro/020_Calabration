@@ -1,5 +1,4 @@
 """Tests for src/board_builder.py — adding and measuring boards."""
-from pathlib import Path
 
 import numpy as np
 import pytest

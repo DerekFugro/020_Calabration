@@ -16,7 +16,7 @@ each area:
 
 Each measure is rated good / weak / poor with the limits below; the area's
 colour is its worst rating.  The limits are starting values chosen
-2026-10-31 (error limits = the app's RMS verdict limits in src/quality.py) —
+2026-10-31 —
 adjust them here.
 """
 
@@ -28,15 +28,14 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from src.quality import RMS_ACCEPTABLE, RMS_EXCELLENT
 
 GRID_N = 3
 
 # ── Limits (edit here) ───────────────────────────────────────────────────────
 POINTS_GOOD = 30            # >= this many points: good
 POINTS_POOR = 10            # <  this many points: poor
-ERROR_GOOD_PX = RMS_EXCELLENT    # <  0.5 px: good
-ERROR_POOR_PX = RMS_ACCEPTABLE   # >  1.0 px: poor
+ERROR_GOOD_PX = 0.5    # <  0.5 px: good
+ERROR_POOR_PX = 1.0    # >  1.0 px: poor (red)
 TILT_GOOD_DEG = 20.0        # >= 20 deg spread of board angles: good
 TILT_POOR_DEG = 10.0        # <  10 deg: poor
 MIN_POINTS_PER_VIEW = 3     # an image counts toward an area's tilt spread

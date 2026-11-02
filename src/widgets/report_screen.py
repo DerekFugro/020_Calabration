@@ -1,7 +1,8 @@
-"""report_screen.py — Screen 3: calibration results, verdict, and Save button.
+"""report_screen.py — One camera, step 2: the result.
 
-Populated via set_data() after calibration completes.
-Emits save_requested() and new_calibration_requested().
+One rating only: the PASS / NOT PASSED banner from the grade (src/grading.py),
+then why, what to shoot next, the 3x3 coverage grid, photos left out, and the
+numbers.  Emits save_requested() and new_calibration_requested().
 """
 
 from __future__ import annotations
@@ -24,10 +25,9 @@ from PySide6.QtWidgets import (
 from src.board import BoardConfig
 from src.calibrator import CalibrationResult
 from src.coverage import GOOD, POOR, WEAK, compute_grid, limits_text
-from src.quality import QualityReport
 from src.styles import (
     BUTTON_H, MARGIN, SPACING,
-    VERDICT_COLOURS, C_TEXT_DIM,
+    C_TEXT_DIM,
     C_AMBER, C_AMBER_BG, C_GREEN, C_GREEN_BG, C_RED, C_RED_BG,
 )
 
@@ -41,23 +41,16 @@ _GRID_CELL_W = 180
 _GRID_CELL_H = 74
 
 # ── Layout constants ─────────────────────────────────────────────────────────
-_BADGE_H      = 44
 _KEY_W        = 200
-_SECTION_VPAD = 6
 _MATRIX_CELL  = 80
 _MAX_DIST     = 14     # max distortion coefficients pre-allocated
 
 
-# Reprojection error threshold above which an image is flagged as an outlier
-_OUTLIER_THRESHOLD = 1.0  # pixels
-
-
 class ReportScreen(QWidget):
-    """Screen 3 — verdict, camera parameters, Save and New Calibration buttons."""
+    """Grade banner, details, camera parameters, Save and New Calibration buttons."""
 
     save_requested                  = Signal()
     new_calibration_requested       = Signal()
-    remove_and_recalibrate_requested = Signal(list)  # list[str] paths to REMOVE
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -71,11 +64,6 @@ class ReportScreen(QWidget):
     def _create_widgets(self) -> None:
         # Title
         self.title_label = QLabel("Calibration Report")
-
-        # Verdict badge
-        self.verdict_badge = QLabel("—")
-        self.verdict_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.verdict_badge.setFixedHeight(_BADGE_H)
 
         # Grade banner (src/grading.py): pass/fail + what to shoot next
         self.folder_label  = QLabel("")
@@ -110,9 +98,6 @@ class ReportScreen(QWidget):
 
         self.resolution_key_label = QLabel("Image Resolution:")
         self.resolution_val_label = QLabel("—")
-
-        self.focus_key_label      = QLabel("Focus Quality:")
-        self.focus_val_label      = QLabel("—")
 
         # ── 3x3 image coverage section ─────────────────────────────────────
         self.grid_section_label = QLabel("Image Coverage (3 × 3)")
@@ -168,10 +153,6 @@ class ReportScreen(QWidget):
         self.outlier_group   = QGroupBox("Photos left out automatically")
         self.outlier_label   = QLabel()
         self.outlier_label.setWordWrap(True)
-        self.recalibrate_btn = QPushButton("Remove Flagged Images & Recalibrate")
-        self.recalibrate_btn.setFixedHeight(BUTTON_H)
-        self.recalibrate_btn.setObjectName("primary_button")
-        self._outlier_paths: list[str] = []
         self.outlier_group.hide()
 
     # ── Layout ────────────────────────────────────────────────────────────────
@@ -218,7 +199,6 @@ class ReportScreen(QWidget):
             (self.focal_key_label,      self.focal_val_label),
             (self.principal_key_label,  self.principal_val_label),
             (self.resolution_key_label, self.resolution_val_label),
-            (self.focus_key_label,      self.focus_val_label),
         ]
         for row, (key_lbl, val_lbl) in enumerate(pairs):
             self.summary_layout.addWidget(key_lbl, row, 0)
@@ -228,7 +208,6 @@ class ReportScreen(QWidget):
         self.outlier_layout = QVBoxLayout()
         self.outlier_layout.setSpacing(SPACING)
         self.outlier_layout.addWidget(self.outlier_label)
-        self.outlier_layout.addWidget(self.recalibrate_btn)
         self.outlier_group.setLayout(self.outlier_layout)
 
         # Scroll content layout
@@ -287,15 +266,11 @@ class ReportScreen(QWidget):
     def _connect_signals(self) -> None:
         self.save_button.clicked.connect(self._on_save_button_clicked)
         self.new_cal_button.clicked.connect(self._on_new_cal_button_clicked)
-        self.recalibrate_btn.clicked.connect(self._on_recalibrate_clicked)
 
     # ── Styling ───────────────────────────────────────────────────────────────
     def _apply_styles(self) -> None:
         self.title_label.setStyleSheet(
             "font-size: 14pt; font-weight: bold; padding-bottom: 4px;"
-        )
-        self.verdict_badge.setStyleSheet(
-            "font-size: 14pt; font-weight: bold; border-radius: 4px;"
         )
         dim = f"rgb({C_TEXT_DIM[0]},{C_TEXT_DIM[1]},{C_TEXT_DIM[2]})"
         for lbl in (
@@ -316,7 +291,7 @@ class ReportScreen(QWidget):
         self.grid_advice.setStyleSheet("font-size: 9pt;")
         for lbl in (
             self.rms_key_label, self.images_key_label, self.focal_key_label,
-            self.principal_key_label, self.resolution_key_label, self.focus_key_label,
+            self.principal_key_label, self.resolution_key_label,
             self.board_squares_key, self.board_cell_key,
             self.board_marker_key, self.board_dict_key,
         ):
@@ -335,14 +310,13 @@ class ReportScreen(QWidget):
     def set_data(
         self,
         cal_result: CalibrationResult,
-        quality: QualityReport,
         board_config: BoardConfig,
         image_folder: str = "",
     ) -> None:
         """Called by MainWindow after calibration completes."""
         from src.photo_folders import folder_lines
         self.folder_label.setText("\n".join(folder_lines(cal_result, image_folder)))
-        self._update_summary(cal_result, quality)
+        self._update_summary(cal_result)
         self._update_matrix(cal_result.camera_matrix)
         self._update_dist(cal_result.dist_coeffs)
         self._update_board(board_config)
@@ -424,25 +398,10 @@ class ReportScreen(QWidget):
         else:
             self.grid_advice.setText("All 9 areas are green.")
 
-    def _update_verdict(self, quality: QualityReport) -> None:
-        text_rgb, bg_rgb = VERDICT_COLOURS.get(
-            quality.verdict, ((220, 220, 220), (60, 60, 60))
-        )
-        self.verdict_badge.setText(quality.verdict)
-        self.verdict_badge.setStyleSheet(
-            f"font-size: 14pt; font-weight: bold; border-radius: 4px;"
-            f"color: rgb({text_rgb[0]},{text_rgb[1]},{text_rgb[2]});"
-            f"background-color: rgb({bg_rgb[0]},{bg_rgb[1]},{bg_rgb[2]});"
-        )
-
-    def _update_summary(
-        self, cal: CalibrationResult, quality: QualityReport
-    ) -> None:
+    def _update_summary(self, cal: CalibrationResult) -> None:
         cam = cal.camera_matrix
         self.rms_val_label.setText(f"{cal.rms:.4f} px")
-        self.images_val_label.setText(
-            f"{cal.image_count_used}  (need >= {quality.image_count_needed})"
-        )
+        self.images_val_label.setText(str(cal.image_count_used))
         self.focal_val_label.setText(
             f"fx = {cam[0,0]:.2f} px     fy = {cam[1,1]:.2f} px"
         )
@@ -452,8 +411,6 @@ class ReportScreen(QWidget):
         self.resolution_val_label.setText(
             f"{cal.image_size[0]} × {cal.image_size[1]} px"
         )
-        # Focus quality: a rough proxy from the accept rate
-        self.focus_val_label.setText("OK (based on blur filter)")
 
     def _update_matrix(self, camera_matrix) -> None:
         for r in range(3):
@@ -496,15 +453,10 @@ class ReportScreen(QWidget):
     def _on_new_cal_button_clicked(self) -> None:
         self.new_calibration_requested.emit()
 
-    def _on_recalibrate_clicked(self) -> None:
-        self.remove_and_recalibrate_requested.emit(self._outlier_paths)
-
     def _update_outliers(self, cal_result: CalibrationResult) -> None:
         """List the photos src/auto_clean.py left out (no button: it is automatic)."""
         import pathlib
-        self.recalibrate_btn.hide()
         removed = list(getattr(cal_result, "auto_removed", []) or [])
-        self._outlier_paths = []
         if not removed:
             self.outlier_group.hide()
             return

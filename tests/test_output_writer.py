@@ -9,9 +9,7 @@ Covers:
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -21,7 +19,6 @@ from src.board import BoardConfig
 from src.calibrator import CalibrationResult
 from src.detector import DetectionResult
 from src.image_filter import FilterResult
-from src.quality import evaluate
 from src.output_writer import write_yaml, write_pdf, write_outputs, _make_stem, _unique_path
 
 
@@ -48,11 +45,6 @@ def cal():
         image_count_used=18,
         image_size=(3840, 2160),
     )
-
-
-@pytest.fixture
-def quality(cal):
-    return evaluate(cal, min_images=15)
 
 
 @pytest.fixture
@@ -117,19 +109,19 @@ def test_unique_path_two_collisions(tmp_path):
 
 # ── write_yaml — filename ────────────────────────────────────────────────────
 
-def test_yaml_filename_format(cal, quality, cfg, tmp_path):
-    p = write_yaml(cal, quality, cfg, _SERIAL, tmp_path, _DT)
+def test_yaml_filename_format(cal, cfg, tmp_path):
+    p = write_yaml(cal, cfg, _SERIAL, tmp_path, _DT)
     assert p.name == f"{_YAML_STEM}.yaml"
 
 
-def test_yaml_file_created(cal, quality, cfg, tmp_path):
-    p = write_yaml(cal, quality, cfg, _SERIAL, tmp_path, _DT)
+def test_yaml_file_created(cal, cfg, tmp_path):
+    p = write_yaml(cal, cfg, _SERIAL, tmp_path, _DT)
     assert p.exists()
 
 
-def test_yaml_no_overwrite_on_collision(cal, quality, cfg, tmp_path):
-    p1 = write_yaml(cal, quality, cfg, _SERIAL, tmp_path, _DT)
-    p2 = write_yaml(cal, quality, cfg, _SERIAL, tmp_path, _DT)
+def test_yaml_no_overwrite_on_collision(cal, cfg, tmp_path):
+    p1 = write_yaml(cal, cfg, _SERIAL, tmp_path, _DT)
+    p2 = write_yaml(cal, cfg, _SERIAL, tmp_path, _DT)
     assert p1 != p2
     assert p2.name == f"{_YAML_STEM}_2.yaml"
     assert p1.exists()
@@ -139,8 +131,8 @@ def test_yaml_no_overwrite_on_collision(cal, quality, cfg, tmp_path):
 # ── write_yaml — content ─────────────────────────────────────────────────────
 
 @pytest.fixture
-def parsed_yaml(cal, quality, cfg, tmp_path):
-    p = write_yaml(cal, quality, cfg, _SERIAL, tmp_path, _DT)
+def parsed_yaml(cal, cfg, tmp_path):
+    p = write_yaml(cal, cfg, _SERIAL, tmp_path, _DT)
     with open(p, encoding="utf-8") as fh:
         return yaml.safe_load(fh)
 
@@ -152,7 +144,6 @@ class TestYamlContent:
         "calibration_datetime",
         "rms_reprojection_error",
         "image_count_used",
-        "verdict",
         "camera_matrix",
         "dist_coeffs",
         "image_resolution",
@@ -176,10 +167,6 @@ class TestYamlContent:
 
     def test_image_count(self, parsed_yaml):
         assert parsed_yaml["image_count_used"] == 18
-
-    def test_verdict_string(self, parsed_yaml):
-        assert isinstance(parsed_yaml["verdict"], str)
-        assert parsed_yaml["verdict"] in ("Excellent", "Acceptable", "Needs Improvement")
 
     def test_camera_matrix_structure(self, parsed_yaml):
         cm = parsed_yaml["camera_matrix"]
@@ -235,38 +222,38 @@ class TestYamlContent:
 
 # ── write_pdf — filename and content ─────────────────────────────────────────
 
-def test_pdf_filename_format(cal, quality, cfg, detections, filters, tmp_path):
-    p = write_pdf(cal, quality, cfg, _SERIAL, detections, filters, tmp_path, _DT)
+def test_pdf_filename_format(cal, cfg, detections, filters, tmp_path):
+    p = write_pdf(cal, cfg, _SERIAL, detections, filters, tmp_path, _DT)
     assert p.name == f"{_PDF_STEM}.pdf"
 
 
-def test_pdf_file_created(cal, quality, cfg, detections, filters, tmp_path):
-    p = write_pdf(cal, quality, cfg, _SERIAL, detections, filters, tmp_path, _DT)
+def test_pdf_file_created(cal, cfg, detections, filters, tmp_path):
+    p = write_pdf(cal, cfg, _SERIAL, detections, filters, tmp_path, _DT)
     assert p.exists()
 
 
-def test_pdf_non_zero_bytes(cal, quality, cfg, detections, filters, tmp_path):
-    p = write_pdf(cal, quality, cfg, _SERIAL, detections, filters, tmp_path, _DT)
+def test_pdf_non_zero_bytes(cal, cfg, detections, filters, tmp_path):
+    p = write_pdf(cal, cfg, _SERIAL, detections, filters, tmp_path, _DT)
     assert p.stat().st_size > 1024, "PDF is suspiciously small"
 
 
-def test_pdf_no_overwrite_on_collision(cal, quality, cfg, detections, filters, tmp_path):
-    p1 = write_pdf(cal, quality, cfg, _SERIAL, detections, filters, tmp_path, _DT)
-    p2 = write_pdf(cal, quality, cfg, _SERIAL, detections, filters, tmp_path, _DT)
+def test_pdf_no_overwrite_on_collision(cal, cfg, detections, filters, tmp_path):
+    p1 = write_pdf(cal, cfg, _SERIAL, detections, filters, tmp_path, _DT)
+    p2 = write_pdf(cal, cfg, _SERIAL, detections, filters, tmp_path, _DT)
     assert p1 != p2
     assert p2.name == f"{_PDF_STEM}_2.pdf"
     assert p1.exists() and p2.exists()
 
 
-def test_pdf_starts_with_pdf_magic(cal, quality, cfg, detections, filters, tmp_path):
+def test_pdf_starts_with_pdf_magic(cal, cfg, detections, filters, tmp_path):
     """All valid PDFs begin with %PDF."""
-    p = write_pdf(cal, quality, cfg, _SERIAL, detections, filters, tmp_path, _DT)
+    p = write_pdf(cal, cfg, _SERIAL, detections, filters, tmp_path, _DT)
     header = p.read_bytes()[:5]
     assert header == b"%PDF-", f"Bad PDF header: {header!r}"
 
 
-def test_pdf_needs_improvement_renders(cfg, detections, filters, tmp_path):
-    """A 'Needs Improvement' verdict should still produce a valid PDF."""
+def test_pdf_not_passed_renders(cfg, detections, filters, tmp_path):
+    """A calibration with no grade (or NOT PASSED) still produces a valid PDF."""
     bad_cal = CalibrationResult(
         camera_matrix=np.eye(3, dtype=np.float64) * 3500.0,
         dist_coeffs=np.zeros((1, 5), dtype=np.float64),
@@ -275,25 +262,24 @@ def test_pdf_needs_improvement_renders(cfg, detections, filters, tmp_path):
         image_count_used=8,
         image_size=(3840, 2160),
     )
-    bad_quality = evaluate(bad_cal, min_images=15)
-    p = write_pdf(bad_cal, bad_quality, cfg, "FAIL01", detections, filters, tmp_path, _DT)
+    p = write_pdf(bad_cal, cfg, "FAIL01", detections, filters, tmp_path, _DT)
     assert p.exists()
     assert p.stat().st_size > 1024
 
 
 # ── write_outputs — shared timestamp ─────────────────────────────────────────
 
-def test_write_outputs_returns_two_paths(cal, quality, cfg, detections, filters, tmp_path):
-    yaml_p, pdf_p = write_outputs(cal, quality, cfg, _SERIAL, detections, filters, tmp_path)
+def test_write_outputs_returns_two_paths(cal, cfg, detections, filters, tmp_path):
+    yaml_p, pdf_p = write_outputs(cal, cfg, _SERIAL, detections, filters, tmp_path)
     assert yaml_p.suffix == ".yaml"
     assert pdf_p.suffix == ".pdf"
     assert yaml_p.exists()
     assert pdf_p.exists()
 
 
-def test_write_outputs_same_timestamp(cal, quality, cfg, detections, filters, tmp_path):
+def test_write_outputs_same_timestamp(cal, cfg, detections, filters, tmp_path):
     """Both files must share the same CAL_<serial>_<timestamp> stem."""
-    yaml_p, pdf_p = write_outputs(cal, quality, cfg, _SERIAL, detections, filters, tmp_path)
+    yaml_p, pdf_p = write_outputs(cal, cfg, _SERIAL, detections, filters, tmp_path)
     yaml_ts = yaml_p.stem  # e.g. CAL_SN42_20260609_143000
     pdf_ts  = pdf_p.stem
     assert yaml_ts == pdf_ts, (

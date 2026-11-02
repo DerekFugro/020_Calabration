@@ -206,7 +206,7 @@ def _combine(res: CameraResult, good: list) -> None:
             continue
         break
     if not good:
-        res.headline = "FAIL: no setup could be solved."
+        res.headline = "NOT PASSED: no setup could be solved."
         res.reasons.append("No usable setup.")
         return
     Rs = [g.solve.R_bc for g in good]
@@ -238,4 +238,4 @@ def _combine(res: CameraResult, good: list) -> None:
                         f"{res.lever_spread_m[0]:.2f} / {res.lever_spread_m[1]:.2f} m); the loop refines them.")
     res.passed = not res.reasons
     res.headline = ("PASS: camera angles and height are good to use." if res.passed
-                    else "NOT GOOD ENOUGH: see the reasons.")
+                    else "NOT PASSED: see the reasons.")

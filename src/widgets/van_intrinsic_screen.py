@@ -7,7 +7,7 @@ from the filed calibration, and what to shoot next.
 
 A row that does not pass can still be exported (files get a NOT_PASSED_
 prefix), the same rule as the single-camera Save: warn, save locally, block
-publishing.
+publishing.  Unusable photos always go to NotUsed (src/pipeline.py).
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from datetime import datetime
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+    QAbstractItemView, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
     QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QSplitter, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
@@ -30,7 +30,7 @@ COLS = ["Camera", "Serial", "Van", "Photos", "Board", "RMS px", "Blur px",
 C_CAM, C_SER, C_VAN, C_PH, C_BRD, C_RMS, C_BLUR, C_ERR, C_FILED, C_GRADE, C_TODO, C_DIR = range(len(COLS))
 
 GREEN = QColor(60, 140, 70)
-AMBER = QColor(170, 120, 30)
+AMBER = QColor(170, 120, 30)     # blur warning only
 RED = QColor(160, 50, 50)
 
 
@@ -66,21 +66,11 @@ class VanIntrinsicScreen(QWidget):
         self.max_spin.setSpecialValueText("all"); self.max_spin.setSuffix(" photos")
         self.max_spin.setToolTip("Use at most this many photos per camera, evenly spaced. "
                                  "'all' is the real result; fewer is only for a quick look.")
-        from PySide6.QtCore import QSettings
-        self._settings = QSettings("SidewalkProfiler", "Calibration")
-        self.move_check = QCheckBox("Move unusable photos to NotUsed")
-        self.move_check.setToolTip("Unreadable, no board, or wrong image size.  Nothing is deleted; "
-                                   "NotUsed\\why.txt lists each photo and why.  Only when using all photos.  "
-                                   "Switch off when checking old data you don't want rearranged.")
-        self.move_check.setChecked(str(self._settings.value("filter/move_unused", "true")).lower() == "true")
-        self.move_check.toggled.connect(
-            lambda on: self._settings.setValue("filter/move_unused", "true" if on else "false"))
         self.grade_all_btn = QPushButton("Grade all")
         self.grade_sel_btn = QPushButton("Grade selected")
         self.stop_btn = QPushButton("Stop"); self.stop_btn.setEnabled(False)
         run = QHBoxLayout()
         run.addWidget(QLabel("Use")); run.addWidget(self.max_spin); run.addWidget(QLabel("per camera"))
-        self.move_check.hide()           # always on (Derek, 2026-11-01)
         run.addSpacing(20); run.addWidget(QLabel("Unusable photos go to NotUsed"))
         run.addStretch(1)
         run.addWidget(self.grade_all_btn); run.addWidget(self.grade_sel_btn); run.addWidget(self.stop_btn)
@@ -169,8 +159,7 @@ class VanIntrinsicScreen(QWidget):
         if not jobs:
             return
         from src.workers import VanIntrinsicWorker
-        self._worker = VanIntrinsicWorker(jobs, self.max_spin.value(), parent=self,
-                                          move_unused=True)
+        self._worker = VanIntrinsicWorker(jobs, self.max_spin.value(), parent=self)
         self._worker.row_started.connect(lambda r, t: self._set_grade_cell(r, "working…", None))
         self._worker.row_progress.connect(lambda r, t: self._set_grade_cell(r, t + "…", None))
         self._worker.row_finished.connect(self._row_done)
@@ -201,17 +190,17 @@ class VanIntrinsicScreen(QWidget):
         self.table.setItem(r, C_RMS, _item(f"{run.cal.rms:.2f}"))
         bl = g.blur_median_px
         bi = _item("—" if bl != bl else f"{bl:.1f}")
-        if bl == bl and bl > 2.5:
+        from src.grading import BLUR_MAX_PX, BLUR_SOFT_PX
+        if bl == bl and bl > BLUR_MAX_PX:
             bi.setBackground(RED)
-        elif bl == bl and bl > 1.5:
+        elif bl == bl and bl > BLUR_SOFT_PX:
             bi.setBackground(AMBER)
         self.table.setItem(r, C_BLUR, bi)
         rp = g.repeatability
         self.table.setItem(r, C_ERR, _item("—" if rp is None else f"{rp.at_10m_mm:.0f} mm"))
         self.table.setItem(r, C_FILED, _item("—" if run.vs_filed_10m_mm is None
                                              else f"{run.vs_filed_10m_mm:.0f} mm"))
-        word = "PASS" if g.passed else ("FAIL" if g.hard_stops else "NOT GOOD ENOUGH")
-        self._set_grade_cell(r, word, GREEN if g.passed else (RED if g.hard_stops else AMBER))
+        self._set_grade_cell(r, "PASS" if g.passed else "NOT PASSED", GREEN if g.passed else RED)
         todo = g.coaching[0] if g.coaching else ("—" if g.passed else g.headline)
         if run.move_note:
             todo = f"{todo}   [{run.move_note}]"
@@ -303,6 +292,18 @@ class VanIntrinsicScreen(QWidget):
             out_dirs.append(out)
         QMessageBox.information(self, "Exported", "Wrote every format to:\n\n" + "\n".join(out_dirs))
         self.status.emit(f"Exported {len(out_dirs)} camera(s).")
+
+    # ── Used by the main window ──────────────────────────────────────────────
+    def graded(self) -> list[tuple[str, str, object]]:
+        """(camera, serial, FolderRun) for every row graded without an error."""
+        return [(self._cell(r, C_CAM), self._cell(r, C_SER), run)
+                for r, run in sorted(self._runs.items()) if not run.error]
+
+    def summary_text(self) -> str:
+        parts = [f"{self._cell(r, C_CAM)} "
+                 f"{'ERROR' if run.error else ('PASS' if run.passed else 'NOT PASSED')}"
+                 for r, run in sorted(self._runs.items())]
+        return "Intrinsic: " + (",  ".join(parts) if parts else "not graded")
 
     def _update_buttons(self, busy: bool | None = None) -> None:
         if busy is None:

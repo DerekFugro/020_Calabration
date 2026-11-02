@@ -1,13 +1,15 @@
-"""app_window.py — the tabbed window: one tab per step of the procedure.
+"""app_window.py — the main window: one tab per step of the procedure.
 
-  Load Intrinsic     photos already collected -> grade -> export   (works)
+  Load Intrinsic     photos already collected -> grade -> save / export
                      · One camera (default): setup -> report
                      · Whole van: every camera in one table
   Capture Intrinsic  the app takes the photos itself                (planned)
-  Load Extrinsic     Old School EOP/GCP -> camera angles + lever arms (next)
+  Load Extrinsic     Old School photos -> camera angles + lever arms
   Capture Extrinsic  the app runs the static setup itself           (planned)
+  Boards             add, measure and print calibration boards
 
-The van bar on top is shared: the van picked there labels every output.
+The van bar on top is shared: the van typed there labels every output.
+All screens report through the one status bar at the bottom.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.styles import STYLESHEET_MAIN
-from src.widgets.main_window import MainWindow
+from src.widgets.one_camera_screen import OneCameraScreen
 from src.widgets.van_intrinsic_screen import VanIntrinsicScreen
 
 
@@ -38,6 +40,7 @@ class AppWindow(QMainWindow):
         self.setWindowTitle("Calibration")
         self.resize(1250, 850)
         self.setStyleSheet(STYLESHEET_MAIN)
+        say = self.statusBar().showMessage
 
         # Van bar
         self.van_edit = QLineEdit(); self.van_edit.setPlaceholderText("ARAN65")
@@ -47,14 +50,18 @@ class AppWindow(QMainWindow):
         bar.addWidget(QLabel("Van:")); bar.addWidget(self.van_edit)
         bar.addSpacing(20); bar.addWidget(self.van_status, 1)
 
-        # Load Intrinsic = Whole van + One camera
+        # Load Intrinsic = One camera (default) + Whole van
+        self.single = OneCameraScreen()
         self.van_screen = VanIntrinsicScreen()
-        self.single = MainWindow()
-        self.single.setWindowFlags(Qt.WindowType.Widget)
         self.load_intrinsic = QTabWidget()
-        self.load_intrinsic.addTab(self.single, "One camera")      # default
+        self.load_intrinsic.addTab(self.single, "One camera")
         self.load_intrinsic.addTab(self.van_screen, "Whole van")
         self.load_intrinsic.setCurrentWidget(self.single)
+
+        from src.widgets.boards_tab import BoardsTab
+        from src.widgets.extrinsic_screen import ExtrinsicScreen
+        self.extrinsic = ExtrinsicScreen(intrinsic_provider=self._intrinsic_for)
+        self.boards_tab = BoardsTab()
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self.load_intrinsic, "Load Intrinsic")
@@ -63,55 +70,41 @@ class AppWindow(QMainWindow):
             "Live 3x3 grid: each area turns green once it has enough points and tilt.",
             "Stops asking for photos when the grade passes.",
         ]), "Capture Intrinsic")
-        from src.widgets.extrinsic_screen import ExtrinsicScreen
-        self.extrinsic = ExtrinsicScreen(intrinsic_provider=self._intrinsic_for)
-        self.extrinsic.status.connect(self.statusBar().showMessage)
         self.tabs.addTab(self.extrinsic, "Load Extrinsic")
         self.tabs.addTab(_planned("Capture Extrinsic — planned", [
             "The app runs the static setup: finds the targets in each photo "
             "itself instead of clicking.",
         ]), "Capture Extrinsic")
-
-        from src.widgets.boards_tab import BoardsTab
-        self.boards_tab = BoardsTab()
         self.tabs.addTab(self.boards_tab, "Boards")
-        self.boards_tab.status.connect(self.statusBar().showMessage)
-        self.boards_tab.boards_changed.connect(self.single.setup_screen.reload_boards)
 
         central = QWidget()
         lay = QVBoxLayout(central)
         lay.addLayout(bar); lay.addWidget(self.tabs, 1)
         self.setCentralWidget(central)
-        self.statusBar().showMessage("Ready.")
+        say("Ready.")
 
+        for screen in (self.single, self.extrinsic, self.boards_tab):
+            screen.status.connect(say)
+        self.van_screen.status.connect(self._van_status)
+        self.boards_tab.boards_changed.connect(self.single.setup_screen.reload_boards)
         self.van_screen.van_changed.connect(self.van_edit.setText)
-        self.van_screen.status.connect(self._status)
         self.van_screen.open_requested.connect(self._open_in_single)
         self.van_edit.textChanged.connect(lambda t: setattr(self.single, "van", t.strip()))
 
     def _intrinsic_for(self, camera: str):
         """A passed intrinsic for this camera from the Whole van table, or None."""
         from src.extrinsic.intrinsic_source import from_run
-        vs = self.van_screen
-        for r, run in vs._runs.items():
-            if vs._cell(r, 0) == camera:
-                got = from_run(run, vs._cell(r, 1))
+        for cam, serial, run in self.van_screen.graded():
+            if cam == camera:
+                got = from_run(run, serial)
                 if got is not None:
                     return got
         return None
 
-    def _status(self, text: str) -> None:
+    def _van_status(self, text: str) -> None:
         self.statusBar().showMessage(text)
-        runs = self.van_screen._runs
-        if runs:
-            parts = []
-            for r, run in sorted(runs.items()):
-                cam = self.van_screen._cell(r, 0)
-                g = run.grade
-                parts.append(f"{cam} {'ERROR' if run.error else ('pass' if g.passed else 'not passed')}")
-            self.van_status.setText("Intrinsic: " + ",  ".join(parts))
+        self.van_status.setText(self.van_screen.summary_text())
 
     def _open_in_single(self, run, role: str, serial: str) -> None:
-        self.single.show_result(run.folder, role, serial, run.board, run.detections,
-                                run.filter_results, run.cal, run.quality)
+        self.single.show_result(run, role, serial)
         self.load_intrinsic.setCurrentWidget(self.single)

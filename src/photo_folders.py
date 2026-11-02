@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.not_used import LOG_NAME, NOT_USED_DIR
+from src.not_used import NOT_USED_DIR
 
 _IMG = {".jpg", ".jpeg", ".png"}
 

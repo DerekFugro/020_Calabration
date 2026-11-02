@@ -11,7 +11,6 @@ from __future__ import annotations
 import base64
 import html
 import os
-from datetime import datetime
 from pathlib import Path
 
 import cv2
@@ -163,7 +162,7 @@ def write_html(cam, site, data: dict, path: Path, serial: str, intrinsic=None, o
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(title)} camera position check</title>
 <style>{CSS}</style></head><body><div class="wrap">
-<div class="banner {'ok' if passed else 'bad'}"><div class="big">{'PASS' if passed else 'FAIL'}</div>
+<div class="banner {'ok' if passed else 'bad'}"><div class="big">{'PASS' if passed else 'NOT PASSED'}</div>
 <div class="who"><b>{e(data["van"])} &middot; {e(data["camera"])}</b><br>Serial {e(serial)} &middot; {e(data["created"][:16].replace("T", " "))}</div></div>
 <p class="head">{e(cam.headline)} {'Safe to load.' if passed else 'Do not load. Fix the items with a red cross first.'}</p>
 <div class="card"><h2>Checks</h2>{ck_html}</div>

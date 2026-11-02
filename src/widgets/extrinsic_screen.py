@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import math
 import os
 
 import cv2
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QColor, QImage, QPixmap
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView, QFileDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
     QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QTableWidget, QTableWidgetItem,
@@ -16,7 +15,7 @@ from PySide6.QtWidgets import (
 
 COLS = ["Camera", "Setups", "Serial", "Intrinsic", "Grade", "Pan °", "Tilt °", "Roll °",
         "Spread °", "Forward m", "Right m", "Up m"]
-GREEN, AMBER, RED = QColor(60, 140, 70), QColor(170, 120, 30), QColor(160, 50, 50)
+GREEN, RED = QColor(60, 140, 70), QColor(160, 50, 50)
 
 
 def _it(t, edit=False):
@@ -164,8 +163,8 @@ class ExtrinsicScreen(QWidget):
             g = _it("ERROR"); g.setBackground(RED); self.table.setItem(r, 4, g)
             self.status.emit(str(res)); return
         self._res[r] = res
-        g = _it("PASS" if res.passed else ("FAIL" if res.R_bc is None else "NOT GOOD ENOUGH"))
-        g.setBackground(GREEN if res.passed else (RED if res.R_bc is None else AMBER))
+        g = _it("PASS" if res.passed else "NOT PASSED")
+        g.setBackground(GREEN if res.passed else RED)
         self.table.setItem(r, 4, g)
         if res.R_bc is not None:
             pan, tilt, roll = res.pan_tilt_roll

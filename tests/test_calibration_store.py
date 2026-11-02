@@ -23,7 +23,6 @@ import yaml
 from src.board import BoardConfig
 from src.calibration_store import (
     INTRINSIC_TYPES,
-    PUBLISHABLE_VERDICTS,
     StoreError,
     calibration_type,
     check_publishable,
@@ -39,10 +38,18 @@ from src.calibration_store import (
 )
 from src.calibrator import CalibrationResult
 from src.output_writer import write_yaml
-from src.quality import evaluate
 
 
 _DT = datetime(2026, 8, 15, 20, 23, 57)
+
+
+def _grade(passed: bool, headline: str = ""):
+    """The fields of a src/grading.GradeReport that write_yaml records."""
+    from types import SimpleNamespace
+    return SimpleNamespace(passed=passed, headline=headline or ("PASS" if passed else "NOT PASSED"),
+                           hard_stops=[], reasons=[] if passed else ["coverage: 2 red areas"],
+                           warnings=[], left_out=[], repeatability=None, more_photos=0,
+                           blur_median_px=float("nan"), blurry_images=[])
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -71,14 +78,14 @@ def cal():
 @pytest.fixture
 def written_yaml(cal, tmp_path):
     """A local CAL_ YAML, as the app writes it next to the images."""
-    quality = evaluate(cal, min_images=15)
+    cal.grade = _grade(True)
     folder = tmp_path / "images"
     folder.mkdir()
-    return write_yaml(cal, quality, BoardConfig(), "234500499", folder, _DT, "PAVE")
+    return write_yaml(cal, BoardConfig(), "234500499", folder, _DT, "PAVE")
 
 
-def _write_cal(tmp_path, rms, image_count, name="images"):
-    """Write a local CAL_ YAML for a run with the given RMS / image count."""
+def _write_cal(tmp_path, passed, name="images", rms=0.5, image_count=45):
+    """Write a local CAL_ YAML for a run whose grade passed or not."""
     result = CalibrationResult(
         camera_matrix=np.array([[2757.6, 0.0, 1417.7],
                                 [0.0, 2758.0, 918.8],
@@ -90,10 +97,8 @@ def _write_cal(tmp_path, rms, image_count, name="images"):
     )
     folder = tmp_path / name
     folder.mkdir(exist_ok=True)
-    quality = evaluate(result, min_images=15)
-    path = write_yaml(result, quality, BoardConfig(), "234500499",
-                      folder, _DT, "PAVE")
-    return path, quality
+    result.grade = _grade(passed)
+    return write_yaml(result, BoardConfig(), "234500499", folder, _DT, "PAVE")
 
 
 @pytest.fixture
@@ -423,57 +428,42 @@ def test_find_latest_missing_store_returns_none(tmp_path):
 
 # ── Quality gate — only a passing calibration may be published ───────────────
 
-def test_publishable_verdicts_are_the_passing_two():
-    assert PUBLISHABLE_VERDICTS == frozenset({"Excellent", "Acceptable"})
+def test_check_publishable_accepts_a_pass(tmp_path):
+    path = _write_cal(tmp_path, passed=True)
+    assert check_publishable(path, True) == "PASS"
 
 
-def test_check_publishable_accepts_excellent(tmp_path):
-    path, quality = _write_cal(tmp_path, rms=0.341, image_count=53)
-    assert quality.verdict == "Excellent" and quality.pass_verdict
-    assert check_publishable(path, quality.pass_verdict) == "Excellent"
+def test_check_publishable_rejects_not_passed(tmp_path):
+    path = _write_cal(tmp_path, passed=False)
+    with pytest.raises(StoreError, match="did not pass its grade"):
+        check_publishable(path, False)
 
 
-def test_check_publishable_accepts_acceptable(tmp_path):
-    """The ROW keeper is Acceptable (RMS 0.527) and is in real use."""
-    path, quality = _write_cal(tmp_path, rms=0.527, image_count=45)
-    assert quality.verdict == "Acceptable" and quality.pass_verdict
-    assert check_publishable(path, quality.pass_verdict) == "Acceptable"
-
-
-def test_check_publishable_rejects_needs_improvement(tmp_path):
-    """ROW 203005 (RMS 1.597) is exactly the run that must never be stored."""
-    path, quality = _write_cal(tmp_path, rms=1.597, image_count=52)
-    assert quality.verdict == "Needs Improvement" and not quality.pass_verdict
-    with pytest.raises(StoreError, match="Needs Improvement"):
-        check_publishable(path, quality.pass_verdict)
-
-
-def test_check_publishable_rejects_too_few_images(tmp_path):
-    """Good RMS but not enough images still fails — the verdict alone hides it."""
-    path, quality = _write_cal(tmp_path, rms=0.30, image_count=8)
-    assert quality.verdict == "Excellent" and not quality.pass_verdict
-    with pytest.raises(StoreError, match="did not pass"):
-        check_publishable(path, quality.pass_verdict)
-
-
-def test_too_few_images_error_names_the_count(tmp_path):
-    """The message must say what actually went wrong, not just 'failed'."""
-    path, quality = _write_cal(tmp_path, rms=0.30, image_count=8)
-    with pytest.raises(StoreError, match="8 used"):
-        check_publishable(path, quality.pass_verdict)
+def test_check_publishable_names_the_reason(tmp_path):
+    """The message must say what went wrong, not just 'failed'."""
+    path = _write_cal(tmp_path, passed=False)
+    with pytest.raises(StoreError, match="2 red areas"):
+        check_publishable(path, False)
 
 
 def test_check_publishable_rejects_failing_file_even_if_flag_says_pass(tmp_path):
     """A wrong caller flag must not wave a failing calibration through."""
-    path, _ = _write_cal(tmp_path, rms=1.597, image_count=52)
-    with pytest.raises(StoreError, match="Needs Improvement"):
+    path = _write_cal(tmp_path, passed=False)
+    with pytest.raises(StoreError, match="did not pass its grade"):
         check_publishable(path, passed=True)
 
 
-def test_check_publishable_rejects_missing_verdict(tmp_path):
-    path = tmp_path / "no_verdict.yaml"
-    path.write_text("serial_number: '234500499'\n", encoding="utf-8")
-    with pytest.raises(StoreError, match="no verdict"):
+def test_check_publishable_rejects_passing_file_when_run_failed(tmp_path):
+    path = _write_cal(tmp_path, passed=True)
+    with pytest.raises(StoreError, match="run did not pass"):
+        check_publishable(path, passed=False)
+
+
+def test_check_publishable_rejects_file_without_grade(tmp_path):
+    """Old files (before 2026-10-31) carry only the RMS verdict: refused."""
+    path = tmp_path / "old.yaml"
+    path.write_text("serial_number: '234500499'\nverdict: Excellent\n", encoding="utf-8")
+    with pytest.raises(StoreError, match="no grade"):
         check_publishable(path, passed=True)
 
 
@@ -485,20 +475,20 @@ def test_check_publishable_rejects_unreadable_file(tmp_path):
 
 
 def test_publish_refuses_failed_calibration(tmp_path, store):
-    path, quality = _write_cal(tmp_path, rms=1.597, image_count=52)
+    path = _write_cal(tmp_path, passed=False)
     with pytest.raises(StoreError):
-        publish(path, "PAVE", "234500499", _DT, store, passed=quality.pass_verdict)
+        publish(path, "PAVE", "234500499", _DT, store, passed=False)
     assert list(store.iterdir()) == [], "nothing may be created for a failed run"
 
 
 def test_publish_keeps_local_files_for_a_failed_run(tmp_path, store):
-    path, quality = _write_cal(tmp_path, rms=1.597, image_count=52)
+    path = _write_cal(tmp_path, passed=False)
     with pytest.raises(StoreError):
-        publish(path, "PAVE", "234500499", _DT, store, passed=quality.pass_verdict)
+        publish(path, "PAVE", "234500499", _DT, store, passed=False)
     assert path.exists(), "a failed run still keeps its working files"
 
 
 def test_publish_accepts_a_passing_calibration(tmp_path, store):
-    path, quality = _write_cal(tmp_path, rms=0.527, image_count=45)
-    out = publish(path, "PAVE", "234500499", _DT, store, passed=quality.pass_verdict)
+    path = _write_cal(tmp_path, passed=True)
+    out = publish(path, "PAVE", "234500499", _DT, store, passed=True)
     assert out.exists()

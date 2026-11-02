@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import cv2
 import numpy as np
 import pytest
 import yaml
 
 from src.calibration_store import StoreError, check_publishable
-from src.calibrator import CalibrationResult
 from src.grading import coverage_counts, grade, ray_disagreement_mrad, sanity_problems
 from tests.test_coverage import _result, _spread_views, K, D, W, H
 
@@ -31,7 +29,7 @@ def test_empty_corner_fails_with_coaching():
     views = [v for v in _spread_views() * 2 if not (v[1][0] < 0 and v[1][1] < 0)]   # nothing top-left
     g = grade(_result_with_errors(views, noise=0.1))
     assert not g.passed
-    assert "NOT GOOD ENOUGH" in g.headline and g.more_photos > 0
+    assert "NOT PASSED" in g.headline and g.more_photos > 0
     assert any(c.startswith("Top-left") for c in g.coaching)
 
 
@@ -62,13 +60,13 @@ def _yaml(tmp_path, data):
 
 
 def test_store_gate_uses_grade(tmp_path):
-    ok = _yaml(tmp_path, {"verdict": "Needs Improvement", "grade": {"passed": True, "headline": "PASS"}})
-    assert check_publishable(ok, passed=True) == "Needs Improvement"
-    bad = _yaml(tmp_path, {"verdict": "Excellent", "grade": {"passed": False, "headline": "NOT GOOD ENOUGH",
+    ok = _yaml(tmp_path, {"grade": {"passed": True, "headline": "PASS"}})
+    assert check_publishable(ok, passed=True) == "PASS"
+    bad = _yaml(tmp_path, {"grade": {"passed": False, "headline": "NOT PASSED",
                                                              "reasons": ["Coverage: Top-left"]}})
     with pytest.raises(StoreError, match="did not pass its grade"):
         check_publishable(bad)
-    old = _yaml(tmp_path, {"verdict": "Needs Improvement"})                 # no grade: old rule
+    old = _yaml(tmp_path, {"verdict": "Excellent"})                         # no grade: refused
     with pytest.raises(StoreError):
         check_publishable(old)
 
