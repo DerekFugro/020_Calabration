@@ -113,6 +113,8 @@ class MainWindow(QMainWindow):
         serial: str,
         board_config: BoardConfig,
     ) -> None:
+        if not self._ask_about_previous(folder):
+            return
         self._image_folder = folder
         self._serial       = serial
         self._role         = self.setup_screen.camera_role
@@ -199,9 +201,9 @@ class MainWindow(QMainWindow):
         self._quality    = quality
         self.report_screen.set_data(cal_result, quality, self._board_config, self._image_folder)
         self.stack.setCurrentIndex(2)
+        g = getattr(cal_result, "grade", None)
         self.statusBar().showMessage(
-            f"Calibration complete — RMS {cal_result.rms:.4f} px  "
-            f"({quality.verdict})"
+            f"Calibration complete — {g.headline if g else ('PASS' if quality.pass_verdict else 'NOT PASSED')}"
         )
 
     # ── Save flow ─────────────────────────────────────────────────────────────
@@ -356,6 +358,35 @@ class MainWindow(QMainWindow):
             f"Removed {n_removed} image(s). Re-running calibration…"
         )
         self._on_proceed_requested()
+    # ── Already calibrated? ───────────────────────────────────────────────────
+    def _ask_about_previous(self, folder: str) -> bool:
+        """True = go ahead and process.  An earlier result can be opened instead."""
+        from src.previous_runs import find_previous
+        prev = find_previous(folder)
+        if not prev:
+            return True
+        last = prev[0]
+        box = QMessageBox(self)
+        box.setWindowTitle("Already calibrated")
+        box.setIcon(QMessageBox.Icon.Question)
+        more = f"\n({len(prev)} earlier results in this folder.)" if len(prev) > 1 else ""
+        box.setText(f"This folder was already calibrated:\n{last.text()}{more}")
+        box.setInformativeText("Open the saved results, or process the photos again?")
+        open_btn = box.addButton("Open results", QMessageBox.ButtonRole.AcceptRole)
+        redo_btn = box.addButton("Reprocess", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(open_btn)
+        box.exec()
+        if box.clickedButton() is redo_btn:
+            return True
+        if box.clickedButton() is open_btn:
+            from PySide6.QtCore import QUrl
+            from PySide6.QtGui import QDesktopServices
+            target = last.pdf_path or last.yaml_path
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+            self.statusBar().showMessage(f"Opened {target.name}")
+        return False
+
     # ── Worker error ──────────────────────────────────────────────────────────
     def _on_worker_error(self, message: str) -> None:
         self.setup_screen.set_busy(False)

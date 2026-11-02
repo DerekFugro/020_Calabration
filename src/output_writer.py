@@ -357,15 +357,17 @@ def write_pdf(
         pdf.multi_cell(_CW, 4.2, _ascii(line), align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3)
 
-    # ── Verdict badge ──────────────────────────────────────────────────────
-    verdict = quality.verdict
-    vr, vg, vb = _VERDICT_COLOUR.get(verdict, (100, 100, 100))
+    # ── One rating: the grade (src/grading.py) ─────────────────────────────
+    g = getattr(cal_result, "grade", None)
+    passed = bool(g.passed) if g is not None else bool(quality.pass_verdict)
+    vr, vg, vb = (46, 125, 50) if passed else (183, 28, 28)
     pdf.set_fill_color(vr, vg, vb)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 13)
     badge_w = 80.0
     pdf.set_x((_PAGE_W - badge_w) / 2)
-    pdf.cell(badge_w, 9, verdict, fill=True, align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(badge_w, 9, "PASS" if passed else "NOT PASSED", fill=True, align="C",
+             new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(0, 0, 0)
 
     # ── Summary ────────────────────────────────────────────────────────────
@@ -423,7 +425,7 @@ def write_pdf(
         _kv(pdf, "Detection:",         "Plain chessboard (ArUco markers ignored)")
 
     # ── Recommended action (Needs Improvement only) ───────────────────────
-    if verdict == "Needs Improvement":
+    if g is None and not passed:
         pdf.ln(3)
         pdf.set_fill_color(255, 235, 238)
         pdf.set_font("Helvetica", "B", 9)

@@ -354,7 +354,13 @@ class SetupScreen(QWidget):
         elif not folder_ok:
             self.status_label.setText("Select an image folder to enable Run.")
         else:
-            self.status_label.setText("Ready.  Click Run Calibration to begin.")
+            from src.previous_runs import find_previous
+            prev = find_previous(self.folder_input.text().strip())
+            if prev:
+                self.status_label.setText(f"Already calibrated: {prev[0].text()}.  "
+                                          "Run lets you open it or process again.")
+            else:
+                self.status_label.setText("Ready.  Click Run Calibration to begin.")
 
     def _on_run_button_clicked(self) -> None:
         folder = self.folder_input.text().strip()

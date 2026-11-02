@@ -1,8 +1,8 @@
 """app_window.py — the tabbed window: one tab per step of the procedure.
 
   Load Intrinsic     photos already collected -> grade -> export   (works)
+                     · One camera (default): setup -> report
                      · Whole van: every camera in one table
-                     · One camera: the original setup/review/report flow
   Capture Intrinsic  the app takes the photos itself                (planned)
   Load Extrinsic     Old School EOP/GCP -> camera angles + lever arms (next)
   Capture Extrinsic  the app runs the static setup itself           (planned)
@@ -52,8 +52,9 @@ class AppWindow(QMainWindow):
         self.single = MainWindow()
         self.single.setWindowFlags(Qt.WindowType.Widget)
         self.load_intrinsic = QTabWidget()
+        self.load_intrinsic.addTab(self.single, "One camera")      # default
         self.load_intrinsic.addTab(self.van_screen, "Whole van")
-        self.load_intrinsic.addTab(self.single, "One camera")
+        self.load_intrinsic.setCurrentWidget(self.single)
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self.load_intrinsic, "Load Intrinsic")

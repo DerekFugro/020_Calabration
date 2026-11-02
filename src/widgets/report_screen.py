@@ -262,7 +262,6 @@ class ReportScreen(QWidget):
         self.main_layout.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
         self.main_layout.setSpacing(SPACING)
         self.main_layout.addWidget(self.title_label)
-        self.main_layout.addWidget(self.verdict_badge)
         self.main_layout.addWidget(self.folder_label)
         self.main_layout.addWidget(self.grade_banner)
         self.main_layout.addWidget(self.scroll_area, stretch=1)
@@ -343,7 +342,6 @@ class ReportScreen(QWidget):
         """Called by MainWindow after calibration completes."""
         from src.photo_folders import folder_lines
         self.folder_label.setText("\n".join(folder_lines(cal_result, image_folder)))
-        self._update_verdict(quality)
         self._update_summary(cal_result, quality)
         self._update_matrix(cal_result.camera_matrix)
         self._update_dist(cal_result.dist_coeffs)
@@ -363,7 +361,7 @@ class ReportScreen(QWidget):
         fg, bg = (C_GREEN, C_GREEN_BG) if g.passed else (C_RED, C_RED_BG)
         self.grade_banner.setText(g.headline)
         self.grade_banner.setStyleSheet(
-            f"font-size: 12pt; font-weight: bold; padding: 6px; border-radius: 4px;"
+            f"font-size: 16pt; font-weight: bold; padding: 10px; border-radius: 4px;"
             f"color: rgb({fg[0]},{fg[1]},{fg[2]}); background: rgb({bg[0]},{bg[1]},{bg[2]});"
         )
         parts = []
