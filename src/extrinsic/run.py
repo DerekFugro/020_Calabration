@@ -123,14 +123,15 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
 
     # pass 1: setups with old clicks (seed 1); pass 2: the rest (seed 2 or 3)
     order = sorted(todo, key=lambda x: (not bool(x.setup.eop), x.setup.name))
-    for sr in order:
+
+    def attempt(sr):
         s = sr.setup
         if s.van is None or not s.photo:
-            continue
+            return
         say(f"{cs.camera} {s.name}: finding targets…")
         img = cv2.imread(s.photo)
         if img is None:
-            sr.problems.append("photo can't be read"); continue
+            sr.problems.append("photo can't be read"); return
         when = setup_date(s.name)
         pose, sr.clicks = _seed_from_clicks(s, site, K, D)
         if pose is not None:
@@ -152,7 +153,7 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
                 sr.seed = "default seeds, all positions tried"
             if not cands:
                 sr.problems.append("no starting guess: no old clicks, no other setup solved, no default seed")
-                continue
+                return
             best = None
             for c in cands:
                 m = match_targets(img, site, K, D, *predict_pose(site, s.van, when, *c))
@@ -165,11 +166,11 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
         if pose is not None:
             sr.match = match_targets(img, site, K, D, *pose)
         if len(sr.match.matches) < 6:
-            sr.problems.append(f"targets not found ({sr.match.note or 'too few'})"); continue
+            sr.problems.append(f"targets not found ({sr.match.note or 'too few'})"); return
         try:
             sr.solve = solve_setup(s.name, [(p, x, y) for p, x, y, _k in sr.match.matches], site, K, D)
         except ValueError as exc:
-            sr.problems.append(str(exc)); continue
+            sr.problems.append(str(exc)); return
         in_van(sr.solve, s.van, site, when)
         # old clicks vs what the app found: a click far from the found target = wrong label/target
         found = {p: (x, y) for p, x, y, _k in sr.match.matches}
@@ -187,6 +188,24 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
         sr.passed = not [p for p in sr.problems if not p.startswith("target ")]
         if sr.passed:
             solved.append(sr)
+
+    tried_with = {}                      # setup -> how many setups were solved when it was tried
+    for sr in order:
+        tried_with[id(sr)] = len(solved)
+        attempt(sr)
+    # pass 3 (2026-11-02, ARAN62 ROW AK26): a setup that found too few targets is tried again
+    # once more setups are solved, from the camera's real place on the van instead of the
+    # default seed.  Repeats while that keeps solving new setups.
+    while True:
+        retry = [sr for sr in order if sr.solve is None and not sr.passed and sr.seed != "old clicks"
+                 and sr.match is not None and len(solved) > tried_with[id(sr)]]
+        if not retry:
+            break
+        for sr in retry:
+            tried_with[id(sr)] = len(solved)
+            sr.problems, sr.match, sr.seed = list(sr.setup.problems), None, ""
+            sr.clicks, sr.label_checks = [], []
+            attempt(sr)
     res.setups = sorted(todo, key=lambda x: x.setup.name)
     _combine(res, solved)
     return res
