@@ -68,6 +68,9 @@ class ExtrinsicScreen(QWidget):
         f.addRow("Old School folder:", r1)
         f.addRow("Camera:", self.camera_lbl)
         f.addRow("Lens:", r2)
+        self.lens_warn = QLabel(""); self.lens_warn.setWordWrap(True)
+        self.lens_warn.setStyleSheet("color: #e0b050; font-weight: bold;"); self.lens_warn.hide()
+        f.addRow("", self.lens_warn)
         f.addRow("Serial:", self.serial)
         info = QLabel(f"Control: {self.site.name} tennis-ball survey ({len(self.site.ids)} targets); the revised "
                       "control file is never used.  Old EOP files are never read: the app finds the targets.")
@@ -151,6 +154,8 @@ class ExtrinsicScreen(QWidget):
     def _set_lens(self, intr):
         self._intr = intr
         self.lens.setText(intr.source)
+        self.lens_warn.setText("⚠ " + intr.warning if intr.warning else "")
+        self.lens_warn.setVisible(bool(intr.warning))
         if intr.serial and not self.serial.text().strip():
             self.serial.setText(intr.serial)
         self._buttons()
@@ -169,6 +174,8 @@ class ExtrinsicScreen(QWidget):
         if isinstance(res, Exception):
             QMessageBox.critical(self, "Solve", str(res)); self.status.emit(str(res)); return
         self._res = res
+        if self._intr is not None and self._intr.warning:
+            res.warnings.insert(0, "Lens: " + self._intr.warning)
         ok = res.passed
         txt = f"<span style='font-size:16pt; font-weight:bold'>{'PASS' if ok else 'NOT PASSED'}</span>"
         if res.R_bc is not None:
@@ -177,6 +184,8 @@ class ExtrinsicScreen(QWidget):
                     f"{res.angle_spread_deg:.2f}°)  ·  height {res.up_ground_m:.3f} m  ·  forward "
                     f"{res.lever_frd[0]:.2f} m, right {res.lever_frd[1]:.2f} m (rough, GPS)")
         txt += "".join(f"<br>&bull; {r}" for r in res.reasons)
+        if self._intr is not None and self._intr.warning:
+            txt += f"<br><span style='color:#e0b050'>&#9888; Lens: {self._intr.warning}</span>"
         fg, bg = ("#3cc83c", "#1b3a1f") if ok else ("#ff6b6b", "#4a1c1c")
         self.result.setText(txt)
         self.result.setStyleSheet(f"color: {fg}; background: {bg}; border: 1px solid {fg}; border-radius: 6px; padding: 8px;")

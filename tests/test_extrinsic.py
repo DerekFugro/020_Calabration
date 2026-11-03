@@ -96,15 +96,20 @@ def test_read_van_pose(tmp_path):
     assert min(v.heading, 360 - v.heading) < 0.01           # circular mean across north
 
 
-def test_intrinsic_refusals(tmp_path):
-    bad = tmp_path / "NOT_PASSED_ARAN65_ROW_1_intrinsic_cal.xml"; bad.write_text("<x/>")
-    with pytest.raises(ValueError, match="did not pass"):
-        from_file(str(bad))
+def test_not_passed_lens_usable_with_warning(tmp_path):
+    """2026-11-03: a lens that did not pass may be used for the extrinsic, with a warning."""
     y = tmp_path / "CAL_1_20260101_000000.yaml"
     y.write_text("serial_number: '1'\ncamera_matrix: {data: [1,0,0,0,1,0,0,0,1]}\n"
-                 "dist_coeffs: {data: [0,0,0,0,0]}\ngrade: {passed: false, headline: NOT GOOD ENOUGH}\n")
-    with pytest.raises(ValueError, match="not a pass"):
-        from_file(str(y))
+                 "dist_coeffs: {data: [0,0,0,0,0]}\ngrade: {passed: false, headline: NOT PASSED}\n")
+    it = from_file(str(y))
+    assert not it.graded_pass and "did not pass" in it.warning and it.serial == "1"
+    y.write_text("serial_number: '1'\ncamera_matrix: {data: [1,0,0,0,1,0,0,0,1]}\n"
+                 "dist_coeffs: {data: [0,0,0,0,0]}\ngrade: {passed: true, headline: PASS}\n")
+    it = from_file(str(y))
+    assert it.graded_pass and it.warning == ""
+    bad = tmp_path / "x_intrinsic_cal.xml"; bad.write_text("<x/>")
+    with pytest.raises(ValueError, match="can read"):
+        from_file(str(bad))
 
 
 def test_detectors_find_disc_and_ball():

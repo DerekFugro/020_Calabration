@@ -53,7 +53,8 @@ def checks(cam, site, serial: str, intrinsic=None) -> list[tuple[str, str, str]]
         if intrinsic.graded_pass:
             out.append((OK, "Lens file passed the app's lens check", intrinsic.source))
         else:
-            out.append((WARN, "Lens file not checked by this app", intrinsic.source))
+            out.append((WARN, getattr(intrinsic, "warning", "") or "Lens file not checked by this app",
+                        intrinsic.source))
         if intrinsic.serial and serial and intrinsic.serial.strip() != serial.strip():
             out.append((BAD, "Lens file is for a different camera",
                         f"Lens file serial {intrinsic.serial}, this camera {serial}"))
