@@ -34,8 +34,11 @@ One path for One camera, Whole van and the CLI (`run_folder`):
    - no hard stop (NaN, placeholder values, implausible focal length);
    - repeatability: the photos split into two random halves (6 times, median) agree within
      0.6 mrad (6 mm at 10 m) — changed 2026-11-02 from first-vs-second half at 10 mm;
-   - every 3×3 area has enough points and tilt, and **no red area**;
-   - RMS under 2 px.
+   - every 3×3 area has enough points and tilt (**no red area**: red = too few points or too little tilt);
+   - not too blurry: dot edge blur ≤ 2.2 px at 1920 wide (4.4 px at 4K); a warning above 1.6 px (3.2 px at 4K).
+
+   RMS and the pixel error in each square are shown but don't fail a calibration (2026-11-03):
+   on 68 fleet cameras they did not predict real error, and blur and 4K inflate them.
 
 ## Camera position (Old School) pass rules (`src/extrinsic/run.py`)
 

@@ -190,10 +190,11 @@ class VanIntrinsicScreen(QWidget):
         self.table.setItem(r, C_RMS, _item(f"{run.cal.rms:.2f}"))
         bl = g.blur_median_px
         bi = _item("—" if bl != bl else f"{bl:.1f}")
-        from src.grading import BLUR_MAX_PX, BLUR_SOFT_PX
-        if bl == bl and bl > BLUR_MAX_PX:
+        from src.grading import blur_limits
+        soft, fail = blur_limits(int(run.cal.image_size[0]))
+        if bl == bl and bl > fail:
             bi.setBackground(RED)
-        elif bl == bl and bl > BLUR_SOFT_PX:
+        elif bl == bl and bl > soft:
             bi.setBackground(AMBER)
         self.table.setItem(r, C_BLUR, bi)
         rp = g.repeatability

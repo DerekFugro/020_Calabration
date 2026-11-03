@@ -2,7 +2,7 @@
 
 Each round:
   * photos whose fit is far worse than the rest (error > max(2 x median, RMS_MAX_PX))
-  * blurry photos (edge blur > BLUR_MAX_PX) — only when the set as a whole is sharp;
+  * blurry photos (edge blur over the fail limit, src/grading.blur_limits) — only when the set as a whole is sharp;
     when every photo is soft, leaving them out would leave nothing, so the grade
     explains the blur instead
 are left out (worst first, at most 10% of the photos per round), and the set is
@@ -34,7 +34,7 @@ def _used(filter_results, detections) -> int:
 
 
 def calibrate_auto(detections, filter_results, board_config, progress_cb=None):
-    from src.grading import BLUR_MAX_PX, MIN_IMAGES, RMS_MAX_PX
+    from src.grading import MIN_IMAGES, RMS_MAX_PX, blur_limits
     say = progress_cb or (lambda _m: None)
     n0 = _used(filter_results, detections)
     keep_min = max(MIN_IMAGES, math.ceil(KEEP_MIN_SHARE * n0))
@@ -47,16 +47,18 @@ def calibrate_auto(detections, filter_results, board_config, progress_cb=None):
             break
         errs = cal.per_image_errors                       # worst first
         med = float(np.median([e for _, e in errs])) if errs else 0.0
-        lim = max(2.0 * med, RMS_MAX_PX)
+        w = int(cal.image_size[0])
+        lim = max(2.0 * med, RMS_MAX_PX * w / 1920.0)
+        blur_max = blur_limits(w)[1]
         cand = [(p, f"high error {e:.2f} px (set median {med:.2f})") for p, e in errs if e > lim]
         blur = getattr(cal, "photo_blur_px", []) or []
         paths = [p for p, _, _ in cal.points_used]
         if blur and len(blur) == len(paths):
             b = np.array(blur, float)
-            if np.isfinite(b).any() and np.nanmedian(b) <= BLUR_MAX_PX:
+            if np.isfinite(b).any() and np.nanmedian(b) <= blur_max:
                 seen = {p for p, _ in cand}
                 cand += sorted(((p, f"blurry, edge blur {v:.1f} px") for p, v in zip(paths, b)
-                                if v > BLUR_MAX_PX and p not in seen), key=lambda x: x[1], reverse=True)
+                                if v > blur_max and p not in seen), key=lambda x: x[1], reverse=True)
         now = _used(filter_results, detections)
         budget = min(now - keep_min, max(1, math.ceil(STEP_SHARE * now)))
         if not cand or budget <= 0:

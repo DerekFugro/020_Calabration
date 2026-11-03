@@ -71,19 +71,22 @@ def test_store_gate_uses_grade(tmp_path):
         check_publishable(old)
 
 
-def test_any_red_area_is_not_a_pass(monkeypatch):
-    """Derek 2026-11-01: no red squares in the 3x3 grid for a pass."""
+def test_pixel_error_alone_does_not_fail_but_few_points_does(monkeypatch):
+    """2026-11-03: a square's pixel error is shown only; red = too few points or too little tilt."""
     from types import SimpleNamespace
     import numpy as np
     import src.grading as gr
     from src.coverage import GOOD, POOR, GridCell, GridReport
 
-    def grid(red):
+    def grid(kind):
         cells = [[GridCell(r, c, points=500, images=40, rms_px=0.4, tilt_spread_deg=40,
                            points_status=GOOD, error_status=GOOD, tilt_status=GOOD, status=GOOD)
                   for c in range(3)] for r in range(3)]
-        if red:
-            cells[2][0].rms_px, cells[2][0].error_status, cells[2][0].status = 1.17, POOR, POOR
+        c = cells[2][0]
+        if kind == "error":
+            c.rms_px, c.error_status = 1.17, POOR
+        if kind == "points":
+            c.points, c.points_status, c.status = 5, POOR, POOR
         return GridReport(cells=cells, image_size=(1920, 1080))
 
     cal = SimpleNamespace(image_size=(1920, 1080), rms=0.8, image_count_used=200,
@@ -93,12 +96,11 @@ def test_any_red_area_is_not_a_pass(monkeypatch):
     rep_ok = SimpleNamespace(est_error_p95_mrad=0.5, at_10m_mm=5.0)
     monkeypatch.setattr(gr, "repeatability", lambda c: rep_ok)
     monkeypatch.setattr(gr, "sanity_problems", lambda *a, **k: [])
-    monkeypatch.setattr(gr, "compute_grid", lambda c: grid(False))
+    monkeypatch.setattr(gr, "compute_grid", lambda c: grid("error"))
     assert gr.grade(cal).passed
-    monkeypatch.setattr(gr, "compute_grid", lambda c: grid(True))
+    monkeypatch.setattr(gr, "compute_grid", lambda c: grid("points"))
     g = gr.grade(cal)
-    assert not g.passed and any("Bottom-left" in r and "red" in r for r in g.reasons)
-    assert any("Bottom-left: error 1.17" in c for c in g.coaching)
+    assert not g.passed and any("Bottom-left" in r for r in g.reasons)
 
 
 def test_squares_say_done_or_how_many_photos():

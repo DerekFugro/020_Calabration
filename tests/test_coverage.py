@@ -87,4 +87,4 @@ def test_names_and_legend():
     g = compute_grid(_result(_spread_views()))
     assert [c.name for c in g.cells[0]] == ["Top-left", "Top-centre", "Top-right"]
     assert g.cells[1][1].name == "Centre"
-    assert "30 points" in limits_text() and "0.5 px" in limits_text()
+    assert "30 points" in limits_text() and "information only" in limits_text()

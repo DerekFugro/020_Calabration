@@ -161,7 +161,9 @@ def compute_grid(cal_result) -> GridReport:
             cell.points_status = _rate_high_good(cell.points, POINTS_GOOD, POINTS_POOR)
             cell.error_status = _rate_low_good(cell.rms_px, ERROR_GOOD_PX, ERROR_POOR_PX)
             cell.tilt_status = _rate_high_good(cell.tilt_spread_deg, TILT_GOOD_DEG, TILT_POOR_DEG)
-            cell.status = max((cell.points_status, cell.error_status, cell.tilt_status),
+            # Colour = points and tilt only (2026-11-03): the pixel error is shown, but it
+            # did not predict real error and blur / 4K inflate it.
+            cell.status = max((cell.points_status, cell.tilt_status),
                               key=_RANK.__getitem__)
             row_cells.append(cell)
         report.cells.append(row_cells)
@@ -170,7 +172,6 @@ def compute_grid(cal_result) -> GridReport:
 
 def limits_text() -> str:
     """One-line legend of the limits, for the GUI and PDF."""
-    return (f"Green = all good: >= {POINTS_GOOD} points, error < {ERROR_GOOD_PX:g} px, "
-            f"board angles vary >= {TILT_GOOD_DEG:g}°.  "
-            f"Red = any of: < {POINTS_POOR} points, error > {ERROR_POOR_PX:g} px, "
-            f"angles vary < {TILT_POOR_DEG:g}°.  Yellow = in between.")
+    return (f"Green = >= {POINTS_GOOD} points and board angles vary >= {TILT_GOOD_DEG:g}°.  "
+            f"Red = < {POINTS_POOR} points or angles vary < {TILT_POOR_DEG:g}°.  Yellow = in between.  "
+            f"The error (px) in each square is shown for information only.")

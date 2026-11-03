@@ -148,12 +148,21 @@ class OneCameraScreen(QWidget):
         cam = camera_from_name(self._role)
         if not cam or cam == "PAVE":
             return ""
-        if not self.van:
-            return "\n\nOther formats not written: type the van (e.g. ARAN65) in the van bar."
+        run = self._run
+        # Always write them locally (Derek, 2026-11-03).  The van comes from the van bar, else
+        # from the folder path (…ARAN62…), else the user is asked.
+        from src.van_scan import van_from_path
+        van = self.van or van_from_path(run.folder)
+        if not van:
+            from PySide6.QtWidgets import QInputDialog
+            van, ok = QInputDialog.getText(self, "Van", "Which van is this camera on? (e.g. ARAN65)\n"
+                                           "Needed to name the intrinsic_cal.xml and the other files.")
+            van = van.strip().upper().replace(" ", "") if ok else ""
+        if not van:
+            return "\n\nOther formats NOT written: no van given."
         try:
             from src.export_formats import Intrinsics, export_all
-            run = self._run
-            c = Intrinsics.from_result(run.cal, self.van, cam, self._serial, board=run.board.name,
+            c = Intrinsics.from_result(run.cal, van, cam, self._serial, board=run.board.name,
                                        date=dt, image_folder=run.folder)
             out = Path(run.folder) / f"Calibration_{dt:%Y%m%d_%H%M%S}"
             return f"\n\nAll formats ({len(export_all(c, out))} files) in:\n{out}"

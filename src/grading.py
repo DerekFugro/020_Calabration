@@ -13,10 +13,15 @@ Rules agreed with Derek on 2026-10-31.  A calibration PASSES when all hold:
      tracked real Old School target misses better; 0.6 mrad keeps about the same
      pass rate as before (38 vs 39 of 68) until a sharp PASS set sets the limit.
   3. Coverage: every 3x3 area has enough points and enough board tilt
-     (points_status and tilt_status good, src/coverage.py), and no area is red
-     on any measure (points, error, tilt) — added 2026-11-01.
-  4. RMS reprojection error < RMS_MAX_PX.  Shown, but no longer the main test:
-     on surveyed targets RMS did not predict real-world error.
+     (points_status and tilt_status good, src/coverage.py).  No red square: red
+     means too few points or too little tilt there.
+  4. Not too blurry: median dot edge blur <= BLUR_FAIL_HD px in HD terms
+     (x width/1920, so 4.4 px on a 4K camera).  Blur shifts the lens without
+     making it unsteady, so only this check catches it (blur test on 10 cameras,
+     2026-11-03: up to ~1.7 px HD / 4 px 4K the lens moved 0.5-4 mm at 10 m).
+Shown but NOT a fail since 2026-11-03 (Derek): RMS and the pixel error per square.
+On 68 fleet cameras neither predicted real Old School target misses, and both are
+inflated by blur and 4K.  Fleet with these rules: 30 of 68 pass (0 before).
 
 The engine works on a finished CalibrationResult, so the same code grades a
 folder now and, later, a live stream of frames (see coverage_counts()).
@@ -30,7 +35,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from src.coverage import GOOD, GRID_N, POINTS_GOOD, POOR, GridReport, compute_grid
+from src.coverage import GOOD, GRID_N, POINTS_GOOD, GridReport, compute_grid
 
 # ── Pass rules (edit here) ───────────────────────────────────────────────────
 RMS_MAX_PX = 2.0
@@ -40,10 +45,15 @@ REPEAT_SEED = 0                  # fixed: the same photos always give the same a
 MIN_IMAGES = 15
 MIN_IMAGES_PER_HALF = 6
 PLACEHOLDER_CENTRE_TOL_PX = 1.0
-BLUR_SOFT_PX = 1.5               # dot edge blur sigma: sharp photos are about 0.7-1.2 px
-BLUR_MAX_PX = 2.5                # above this a photo is blurry (ARAN68 ROW set: 4.4 px, RMS 3.3)
+BLUR_SOFT_HD = 1.6              # dot edge blur, px at 1920 wide: above = soft (warning)
+BLUR_FAIL_HD = 2.2              # above = too blurry (fail); a 4K camera gets 2x these
+
+
+def blur_limits(width: int) -> tuple[float, float]:
+    """(soft, fail) dot-edge blur limits in px for an image this wide."""
+    s = max(width, 1) / 1920.0
+    return BLUR_SOFT_HD * s, BLUR_FAIL_HD * s
 TILT_PHOTOS_PER_AREA = 3
-RED_ERROR_PHOTOS = 5             # coaching: photos to add where an area's error is red          # coaching: photos to add for a low-tilt area
 DEFAULT_POINTS_PER_PHOTO = 10     # coaching: when an area has no photos yet
 
 
@@ -244,16 +254,11 @@ def _grade_blur(rep, cal_result) -> None:
     paths = [p for p, _, _ in cal_result.points_used]
     if blur.size == 0 or np.isnan(blur).all() or len(paths) != blur.size:
         return
+    soft, fail = blur_limits(int(cal_result.image_size[0]))
     rep.blur_median_px = float(np.nanmedian(blur))
-    rep.blurry_images = sorted(((p, float(b)) for p, b in zip(paths, blur) if b > BLUR_MAX_PX),
-                               key=lambda x: -x[1])
-    if rep.blur_median_px > BLUR_MAX_PX:
-        # A warning, not a fail: of 68 fleet sets this blurry, 10 still met the
-        # repeatability and RMS rules (blur_survey.csv, 2026-11-01).  Blur explains
-        # most failures; the accuracy rules decide.
-        rep.warnings.append(f"Photos are blurry: dot edge blur {rep.blur_median_px:.1f} px "
-                            f"(sharp is about 1 px). Likely why the other checks fail.")
-        tip = "Every photo is soft. Do NOT refocus the camera (that changes the lens numbers). "
+    rep.blurry_images = sorted(((p, float(b)) for p, b in zip(paths, blur) if b > fail), key=lambda x: -x[1])
+    if rep.blur_median_px > soft:
+        tip = "Do NOT refocus the camera (that changes the lens numbers). "
         # Board distance per photo (board units are mm): if the far photos are sharper,
         # the board is held closer than the lens is focused.
         try:
@@ -265,11 +270,17 @@ def _grade_blur(rep, cal_result) -> None:
                         f"hold it at that distance or farther. ")
         except Exception:  # noqa: BLE001
             pass
-        tip += "Clean the lens, hold the board still, and use good light."
+        tip += "Board on a stand and stopped before each photo, van engine off, good light, clean lens."
+        if rep.blur_median_px > fail:
+            rep.reasons.append(f"Too blurry: dot edge blur {rep.blur_median_px:.1f} px (limit {fail:.1f} px "
+                               f"for this image size). Blur shifts the lens without the other checks noticing.")
+        else:
+            rep.warnings.append(f"Photos are soft: dot edge blur {rep.blur_median_px:.1f} px (fails above "
+                                f"{fail:.1f} px for this image size).")
         rep.coaching.append(tip)
     elif rep.blurry_images:
         n = len(rep.blurry_images)
-        rep.coaching.append(f"{n} blurry photo{'s' if n > 1 else ''} (edge blur over {BLUR_MAX_PX:g} px, "
+        rep.coaching.append(f"{n} blurry photo{'s' if n > 1 else ''} (edge blur over {fail:.1f} px, "
                             f"listed): hold the board still.")
 
 
@@ -312,18 +323,6 @@ def grade(cal_result) -> GradeReport:
         weak = [c.name for c in rep.grid.flat if c.points_status != GOOD or (c.points and c.tilt_status != GOOD)]
         if weak:
             rep.reasons.append(f"Coverage: {len(weak)} of 9 areas need more photos ({', '.join(weak)}).")
-        # Rule (Derek, 2026-11-01): any red area in the 3x3 grid is not a pass.
-        red = [c for c in rep.grid.flat if c.status == POOR]
-        if red:
-            rep.reasons.append(f"{len(red)} of 9 areas are red ({', '.join(c.name for c in red)}). "
-                               f"Every area must be green or yellow.")
-            for c in red:
-                if c.points and c.error_status == POOR and c.points_status == GOOD:
-                    more += RED_ERROR_PHOTOS
-                    rep._ask(c, RED_ERROR_PHOTOS, "sharp, held still")
-                    rep.coaching.append(f"{c.name}: error {c.rms_px:.2f} px (limit 1.0). Take about "
-                                        f"{RED_ERROR_PHOTOS} more sharp photos with the board in this part of "
-                                        f"the picture, held still and tilted.")
     else:
         rep.reasons.append("Coverage could not be measured.")
 
@@ -344,11 +343,11 @@ def grade(cal_result) -> GradeReport:
         rep.coaching.append("Lens not steady: take sharp photos with the board held still, spread over the "
                             "whole picture and tilted; more photos at the edges help most.")
 
-    # RMS
-    if not math.isnan(rep.rms_px) and rep.rms_px >= RMS_MAX_PX:
-        rep.reasons.append(f"RMS {rep.rms_px:.2f} px (limit {RMS_MAX_PX:g} px): the dots are not found "
-                           f"cleanly. Usually blur, motion or a board that is not flat.")
-        rep.coaching.append("Hold the board still (a stand is best), use short exposure and good light.")
+    # RMS: shown only (not a fail since 2026-11-03)
+    sc = size[0] / 1920.0
+    if not math.isnan(rep.rms_px) and rep.rms_px >= RMS_MAX_PX * sc:
+        rep.warnings.append(f"RMS {rep.rms_px:.2f} px is high for this image size: the dots are not found "
+                            f"cleanly (blur, motion, compression or a board that is not flat). Shown only.")
 
     rep.left_out = list(getattr(cal_result, "auto_removed", []) or [])
 
@@ -358,7 +357,7 @@ def grade(cal_result) -> GradeReport:
     # Worst photos
     errs = [e for _, e in cal_result.per_image_errors]
     if errs:
-        lim = max(2.0 * float(np.median(errs)), RMS_MAX_PX)
+        lim = max(2.0 * float(np.median(errs)), RMS_MAX_PX * sc)
         rep.worst_images = [(p, e) for p, e in cal_result.per_image_errors if e > lim][:10]
         if rep.worst_images:
             n = len(rep.worst_images)
