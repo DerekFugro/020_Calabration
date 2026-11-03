@@ -90,6 +90,23 @@ def load_seeds(site) -> dict:
     return out
 
 
+# The default seed comes from one van (ARAN65); the same camera on another van can point
+# several degrees away, and with no old clicks nothing else is known (2026-11-02: 8 of 68
+# fleet cameras found no targets from the default seed alone).  Sweep pan and tilt around it,
+# nearest first; the first guess that finds 12+ targets wins.
+SEED_SWEEP_PAN_DEG = (0, -4, 4, -8, 8, -12, 12)
+SEED_SWEEP_TILT_DEG = (0, -3, 3)
+
+
+def _swept(sd):
+    out = []
+    for dp in SEED_SWEEP_PAN_DEG:
+        for dt in SEED_SWEEP_TILT_DEG:
+            Rc, _ = cv2.Rodrigues(np.radians([dt, dp, 0.0]))     # camera axes: x right (tilt), y down (pan)
+            out.append((sd["R_bc"] @ Rc, sd["lever"], sd["up"]))
+    return out
+
+
 def _seed_from_clicks(s, site, K, D):
     clicks = read_eop_clicks(s.eop) if s.eop else []
     if len(clicks) < 6:
@@ -146,10 +163,10 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
                 if cs.camera in seeds:
                     sd = seeds[cs.camera]; cands.append((sd["R_bc"], sd["lever"], sd["up"]))
             elif cs.camera in seeds:
-                sd = seeds[cs.camera]; cands = [(sd["R_bc"], sd["lever"], sd["up"])]
+                sd = seeds[cs.camera]; cands = _swept(sd)
                 sr.seed = "default seed"
             else:   # position not known from the folder name: try every position
-                cands = [(sd["R_bc"], sd["lever"], sd["up"]) for sd in seeds.values()]
+                cands = [c for sd in seeds.values() for c in _swept(sd)]
                 sr.seed = "default seeds, all positions tried"
             if not cands:
                 sr.problems.append("no starting guess: no old clicks, no other setup solved, no default seed")

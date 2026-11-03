@@ -20,14 +20,11 @@ import numpy as np
 WALL_BLOCK, WALL_C, WALL_MIN_AREA, WALL_MIN_CIRC = 61, 25, 10.0, 0.35
 
 
-def detect_wall(gray: np.ndarray) -> np.ndarray:
-    """Dark round blobs: (N, 3) x, y, diameter px."""
-    h, w = gray.shape[:2]
-    sc = w / 1920.0                       # tuned on 1920 x 1080; scaled for 4K
-    blk = max(15, int(WALL_BLOCK * sc) | 1)
-    b = cv2.GaussianBlur(gray, (3, 3), 0)
+def _wall_pass(b, sc, w, h, blk, close, opn):
     th = cv2.adaptiveThreshold(b, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, blk, WALL_C)
-    th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (close, close)))
+    if opn > 1:   # cut the thin dark wall ribs off the discs
+        th = cv2.morphologyEx(th, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (opn, opn)))
     cs, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     out = []
     for c in cs:
@@ -46,7 +43,30 @@ def detect_wall(gray: np.ndarray) -> np.ndarray:
                 continue
             x, y, d = M["m10"] / M["m00"], M["m01"] / M["m00"], 2 * np.sqrt(a / np.pi)
         out.append((x, y, d))
-    return np.array(out, float).reshape(-1, 3)
+    return out
+
+
+# Close to the wall a disc is bigger than the threshold window, its white cross cuts it
+# into pieces and the dark wall ribs join it, so nothing round is left (ARAN62 ROW AK26,
+# 2026-11-02).  Larger windows fill the cross (closing) and cut the ribs off (opening);
+# the first (small) pass wins where both find a disc.
+WALL_PASSES = ((1, 3, 0), (3, 9, 11), (6, 17, 21))   # (window x, closing px, opening px at 1080p)
+
+
+def detect_wall(gray: np.ndarray) -> np.ndarray:
+    """Dark round blobs: (N, 3) x, y, diameter px."""
+    h, w = gray.shape[:2]
+    sc = w / 1920.0                       # tuned on 1920 x 1080; scaled for 4K
+    b = cv2.GaussianBlur(gray, (3, 3), 0)
+    found = []
+    for fw, fc, fo in WALL_PASSES:
+        blk = max(15, int(WALL_BLOCK * sc * fw) | 1)
+        close = max(3, int(fc * sc) | 1)
+        opn = int(fo * sc) | 1 if fo else 0
+        for x, y, d in _wall_pass(b, sc, w, h, blk, close, opn):
+            if all(np.hypot(x - x2, y - y2) > 0.5 * max(d, d2) for x2, y2, d2 in found):
+                found.append((x, y, d))
+    return np.array(found, float).reshape(-1, 3)
 
 
 def detect_balls(bgr: np.ndarray) -> np.ndarray:
