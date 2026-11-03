@@ -151,7 +151,8 @@ def write_html(cam, site, data: dict, path: Path, serial: str, intrinsic=None, o
         why = "; ".join(p for p in s.problems if not p.startswith("target "))[:200]
         rows.append(f'<tr><td>{e(s.setup.name)}</td><td><span class="tag {st}">{"USED" if s.passed else "DROPPED"}</span></td>'
                     f'<td>{sol.n_points if sol else 0}</td><td>{f"{sol.loo_rms_mm:.1f}" if sol else "-"}</td>'
-                    f'<td>{len(s.label_checks) or ""}</td><td class="why">{e(why)}</td></tr>')
+                    f'<td>{getattr(s, "ground_targets", 0)}{" &#10003;" if getattr(s, "counts_for_height", False) else ""}</td>'
+                    f'<td class="why">{e(why)}</td></tr>')
         img = overlays.get(s.setup.name)
         if img is not None:
             cards.append(f'<div class="ph {st}" data-full="{_jpeg(img, 2400, 80)}"><img src="{_jpeg(img, 640, 70)}" alt="">'
@@ -167,7 +168,7 @@ def write_html(cam, site, data: dict, path: Path, serial: str, intrinsic=None, o
 <p class="head">{e(cam.headline)} {'Safe to load.' if passed else 'Do not load. Fix the items with a red cross first.'}</p>
 <div class="card"><h2>Checks</h2>{ck_html}</div>
 <div class="card"><h2>Result</h2><table>{num_html}</table></div>
-<div class="card"><h2>Setups</h2><table><tr><th>Setup</th><th></th><th>Targets</th><th>Miss mm</th><th>Wrong hand clicks</th><th>Why dropped</th></tr>{''.join(rows)}</table></div>
+<div class="card"><h2>Setups</h2><table><tr><th>Setup</th><th></th><th>Targets</th><th>Miss mm</th><th>Tennis balls (&#10003; = used for height)</th><th>Why dropped</th></tr>{''.join(rows)}</table></div>
 <div class="card"><h2>Photos</h2><p style="margin:0 0 10px;color:var(--muted);font-size:13px">Green = target found and used (number, miss in mm). Red = found but left out. Orange = should be there but not found. Click a photo to enlarge; click again to zoom.</p><div class="grid">{''.join(cards) or 'No photos.'}</div></div>
 <div class="foot">Made by 020_Calabration. Folder: {e(str(cam.folder))}</div>
 </div><div id="big"><img alt=""></div><script>{JS}</script></body></html>"""

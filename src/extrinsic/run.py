@@ -33,6 +33,12 @@ MIN_SETUPS = 3             # per camera
 MAX_ANGLE_SPREAD_DEG = 1.5  # per camera: worst setup vs the camera's mean direction (fleet p90 1.55)
 MAX_HEIGHT_SPREAD_M = 0.20  # per camera: camera height above the pavement, max - min (fleet p90 0.21)
 OUTLIER_SETUP_DEG = 2.0     # a setup this far from the others (and 3x their median) is left out
+# Camera height comes only from setups with this many tennis balls used, when at least
+# MIN_SETUPS have them.  Fleet 2026-11-02 (65 cameras, no old clicks): with 0-2 balls a flat
+# wall can't separate a small tilt from a small height change; height scatter between setups
+# 42 -> 32 mm (better on 27 cameras, worse on 2).  Forward/right and angles: no change, so
+# they still use every good setup.
+MIN_GROUND_FOR_HEIGHT = 3
 
 
 # Normal pointing of each camera position (pan, + right of straight ahead).  Real
@@ -55,6 +61,8 @@ class SetupResult:
     label_checks: list = field(default_factory=list)   # (id, text) where the old clicks disagree
     passed: bool = False
     problems: list = field(default_factory=list)
+    ground_targets: int = 0                # tennis balls used in the solve
+    counts_for_height: bool = False
 
 
 @dataclass
@@ -189,6 +197,8 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
         except ValueError as exc:
             sr.problems.append(str(exc)); return
         in_van(sr.solve, s.van, site, when)
+        gi = site.index()
+        sr.ground_targets = int(sum(bool(site.ground[gi[p]]) for p in sr.solve.ids))
         # old clicks vs what the app found: a click far from the found target = wrong label/target
         found = {p: (x, y) for p, x, y, _k in sr.match.matches}
         for pid, x, y in sr.clicks:
@@ -252,7 +262,15 @@ def _combine(res: CameraResult, good: list) -> None:
     lev = np.array([g.solve.lever_frd for g in good])
     res.lever_frd = lev.mean(axis=0)
     res.lever_spread_m = lev.max(axis=0) - lev.min(axis=0)
-    ups = np.array([g.solve.up_ground_m for g in good])
+    tall = [g for g in good if getattr(g, "ground_targets", 0) >= MIN_GROUND_FOR_HEIGHT]
+    hset = tall if len(tall) >= MIN_SETUPS else good
+    for g in hset:
+        g.counts_for_height = True
+    if hset is not tall:
+        res.warnings.append(f"Camera height from all setups: only {len(tall)} had {MIN_GROUND_FOR_HEIGHT}+ tennis "
+                            f"balls in view (need {MIN_SETUPS}). Park so at least {MIN_GROUND_FOR_HEIGHT} balls are "
+                            "in the picture; a wall alone gives a weaker height.")
+    ups = np.array([g.solve.up_ground_m for g in hset])
     res.up_ground_m = float(ups.mean())
     res.height_spread_m = float(ups.max() - ups.min())
     if len(good) < MIN_SETUPS:

@@ -138,3 +138,21 @@ def test_outlier_setup_left_out():
     _combine(res, good)
     assert len(good) == 4 and res.angle_spread_deg < 0.5 and res.passed
     assert "left out" in good_out[0] if (good_out := []) else True
+
+
+def test_height_from_setups_with_tennis_balls():
+    """2026-11-02: height comes from setups with 3+ balls when 3+ such setups exist."""
+    from src.extrinsic.run import CameraResult, _combine
+    base = rot_zyx(39, -2, 0) @ np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0.0]])
+    def g(up, balls):
+        sol = SimpleNamespace(R_bc=base, lever_frd=np.array([-2.4, 0.6, 0]), up_ground_m=up)
+        return SimpleNamespace(solve=sol, passed=True, problems=[], ground_targets=balls)
+    good = [g(2.30, 5), g(2.31, 4), g(2.32, 3), g(2.05, 1), g(2.19, 0)]
+    res = CameraResult(camera="ForwardRight", van="X", folder="f")
+    _combine(res, good)
+    assert abs(res.up_ground_m - 2.31) < 1e-6 and res.height_spread_m < 0.03 and res.passed
+    assert [getattr(x, "counts_for_height", False) for x in good] == [True, True, True, False, False]
+    few = [g(2.30, 5), g(2.31, 0), g(2.05, 1)]
+    res2 = CameraResult(camera="ForwardRight", van="X", folder="f")
+    _combine(res2, few)
+    assert any("Park so at least 3 balls" in w for w in res2.warnings)
