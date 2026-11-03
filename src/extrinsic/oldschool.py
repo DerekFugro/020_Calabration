@@ -2,7 +2,7 @@
 
 <van Old School folder>/<camera>/<setup timestamp>/
     *.jpg (or .bmp)        the photo (the .bmp is a decoded copy of the .jpg)
-    *.EOP                  clicks from the old exe (optional; used as a seed / to compare)
+    *.EOP                  ignored: the app finds the targets itself and writes its own EOP
     ReviewData_*.csv or *Processed*.csv   the van's Applanix values while parked
     *.gcp                  ignored: the site control file is used instead
 <camera>/PGExteriorCalibration*.RWC, PGInteriorCalibration*.RWC   old exe results (compare)
@@ -44,7 +44,6 @@ class Setup:
     name: str
     photo: str = ""
     photo_id: int = 0
-    eop: str = ""
     pose_csv: str = ""
     van: VanPose | None = None
     problems: list = field(default_factory=list)
@@ -112,8 +111,6 @@ def _setup(folder: str) -> Setup:
             pass
     else:
         s.problems.append("no photo")
-    eops = sorted(glob.glob(os.path.join(folder, "*.EOP")) + glob.glob(os.path.join(folder, "*.eop")))
-    s.eop = eops[0] if eops else ""
     csvs = (glob.glob(os.path.join(folder, "*Processed*.csv")) + glob.glob(os.path.join(folder, "ReviewData*.csv"))
             + sorted(glob.glob(os.path.join(folder, "*.csv"))))
     for c in csvs:                       # first csv that has the Applanix columns
@@ -135,8 +132,7 @@ def scan_old_school(root: str) -> list[CameraSetups]:
             continue
         if not any(f.lower().endswith((".jpg", ".jpeg", ".bmp")) for f in files):
             continue
-        if not (any(f.lower().endswith(".eop") for f in files)
-                or any(f.lower().endswith(".csv") for f in files)):
+        if not any(f.lower().endswith(".csv") for f in files):     # the van pose file
             continue
         cam_dir = os.path.dirname(d)
         cam = camera_from_name(os.path.basename(cam_dir))
@@ -152,17 +148,3 @@ def scan_old_school(root: str) -> list[CameraSetups]:
     for cs in out.values():
         cs.setups.sort(key=lambda s: s.name)
     return sorted(out.values(), key=lambda c: (c.camera, c.folder))
-
-
-def read_eop_clicks(path: str) -> list[tuple[str, float, float]]:
-    """(point id, x px, y px) for clicked points (status 1).  Coordinates in the
-    EOP are ignored: they may be truncated or from the revised control file."""
-    out = []
-    for line in open(path, errors="ignore"):
-        v = line.split()
-        if len(v) == 8 and v[7] == "1":
-            try:
-                out.append((v[1], float(v[5]), float(v[6])))
-            except ValueError:
-                pass
-    return out

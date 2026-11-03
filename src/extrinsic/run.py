@@ -1,10 +1,10 @@
 """run.py — one camera, all its Old School setups: find targets, solve, combine, grade.
 
-Seed (a first guess of where the camera looks), in this order:
-  1. this setup's EOP clicks from the old exe (old data), only to start the search;
-  2. another setup of this camera already solved here (its place on the van);
-  3. the default seed for this camera position (control/<site>/seeds.yaml).
-The targets used in the solve are always the ones the app found itself.
+Seed (a first guess of where the camera looks):
+  1. another setup of this camera already solved here (its place on the van);
+  2. the default seed for this camera position (control/<site>/seeds.yaml), swept in pan/tilt.
+The app finds and labels every target itself.  Old EOP files are not read (2026-11-03,
+Derek): the app writes the EOPs.  Fleet test without them: 392 setups used vs 359 with.
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ import cv2
 import numpy as np
 import yaml
 
-from src.extrinsic.oldschool import read_eop_clicks
 from src.extrinsic.solve import (in_van, pointing, rot_angle_deg, rot_mean, rot_zyx, setup_date,
                                  solve_setup)
 from src.extrinsic.targets import match_targets, predict_pose
@@ -57,8 +56,6 @@ class SetupResult:
     seed: str = ""
     match: object = None                   # targets.MatchResult
     solve: object = None                   # solve.SetupSolve
-    clicks: list = field(default_factory=list)
-    label_checks: list = field(default_factory=list)   # (id, text) where the old clicks disagree
     passed: bool = False
     problems: list = field(default_factory=list)
     ground_targets: int = 0                # tennis balls used in the solve
@@ -115,20 +112,6 @@ def _swept(sd):
     return out
 
 
-def _seed_from_clicks(s, site, K, D):
-    clicks = read_eop_clicks(s.eop) if s.eop else []
-    if len(clicks) < 6:
-        return None, clicks
-    try:
-        sol = solve_setup(s.name, clicks, site, K, D)
-    except Exception:  # noqa: BLE001
-        return None, clicks
-    R_cw = sol.R_wc.T
-    rvec, _ = cv2.Rodrigues(R_cw)
-    tvec = -R_cw @ (sol.cam_enh - site.enh_m[0])
-    return (rvec, tvec.reshape(3, 1)), clicks
-
-
 def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> CameraResult:
     say = progress_cb or (lambda _m: None)
     res = CameraResult(camera=cs.camera, van=cs.van, folder=cs.folder, K=K, D=D)
@@ -146,8 +129,7 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
                 np.mean([x.solve.lever_frd for x in solved], axis=0),
                 float(np.mean([x.solve.up_ground_m for x in solved])))
 
-    # pass 1: setups with old clicks (seed 1); pass 2: the rest (seed 2 or 3)
-    order = sorted(todo, key=lambda x: (not bool(x.setup.eop), x.setup.name))
+    order = sorted(todo, key=lambda x: x.setup.name)
 
     def attempt(sr):
         s = sr.setup
@@ -158,38 +140,31 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
         if img is None:
             sr.problems.append("photo can't be read"); return
         when = setup_date(s.name)
-        pose, sr.clicks = _seed_from_clicks(s, site, K, D)
-        if pose is not None:
-            sr.seed = "old clicks"
-        else:
-            pv = place_on_van()
-            if pv is not None:
-                sr.seed = "other setups of this camera"
-                # the camera's average place first; each solved setup's own place and the
-                # default seed are tried too when that finds few targets
-                cands = [pv] + [(x.solve.R_bc, x.solve.lever_frd, x.solve.up_ground_m) for x in solved]
-                if cs.camera in seeds:
-                    sd = seeds[cs.camera]; cands.append((sd["R_bc"], sd["lever"], sd["up"]))
-            elif cs.camera in seeds:
-                sd = seeds[cs.camera]; cands = _swept(sd)
-                sr.seed = "default seed"
-            else:   # position not known from the folder name: try every position
-                cands = [c for sd in seeds.values() for c in _swept(sd)]
-                sr.seed = "default seeds, all positions tried"
-            if not cands:
-                sr.problems.append("no starting guess: no old clicks, no other setup solved, no default seed")
-                return
-            best = None
-            for c in cands:
-                m = match_targets(img, site, K, D, *predict_pose(site, s.van, when, *c))
-                if best is None or len(m.matches) > len(best.matches):
-                    best = m
-                if len(best.matches) >= 12:
-                    break
-            sr.match = best
-            pose = None
-        if pose is not None:
-            sr.match = match_targets(img, site, K, D, *pose)
+        pv = place_on_van()
+        if pv is not None:
+            sr.seed = "other setups of this camera"
+            # the camera's average place first; each solved setup's own place and the
+            # default seed are tried too when that finds few targets
+            cands = [pv] + [(x.solve.R_bc, x.solve.lever_frd, x.solve.up_ground_m) for x in solved]
+            if cs.camera in seeds:
+                sd = seeds[cs.camera]; cands.append((sd["R_bc"], sd["lever"], sd["up"]))
+        elif cs.camera in seeds:
+            sd = seeds[cs.camera]; cands = _swept(sd)
+            sr.seed = "default seed"
+        else:   # position not known from the folder name: try every position
+            cands = [c for sd in seeds.values() for c in _swept(sd)]
+            sr.seed = "default seeds, all positions tried"
+        if not cands:
+            sr.problems.append("no starting guess: no other setup solved and no default seed")
+            return
+        best = None
+        for c in cands:
+            m = match_targets(img, site, K, D, *predict_pose(site, s.van, when, *c))
+            if best is None or len(m.matches) > len(best.matches):
+                best = m
+            if len(best.matches) >= 12:
+                break
+        sr.match = best
         if len(sr.match.matches) < 6:
             sr.problems.append(f"targets not found ({sr.match.note or 'too few'})"); return
         try:
@@ -199,13 +174,6 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
         in_van(sr.solve, s.van, site, when)
         gi = site.index()
         sr.ground_targets = int(sum(bool(site.ground[gi[p]]) for p in sr.solve.ids))
-        # old clicks vs what the app found: a click far from the found target = wrong label/target
-        found = {p: (x, y) for p, x, y, _k in sr.match.matches}
-        for pid, x, y in sr.clicks:
-            if pid in found:
-                d = math.hypot(found[pid][0] - x, found[pid][1] - y)
-                if d > 4:
-                    sr.label_checks.append((pid, f"old click is {d:.0f} px from the target the app found"))
         for pid, why in sr.solve.dropped:
             sr.problems.append(f"target {pid} dropped: {why}")
         if sr.solve.n_points < MIN_TARGETS:
@@ -224,14 +192,13 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
     # once more setups are solved, from the camera's real place on the van instead of the
     # default seed.  Repeats while that keeps solving new setups.
     while True:
-        retry = [sr for sr in order if sr.solve is None and not sr.passed and sr.seed != "old clicks"
+        retry = [sr for sr in order if sr.solve is None and not sr.passed
                  and sr.match is not None and len(solved) > tried_with[id(sr)]]
         if not retry:
             break
         for sr in retry:
             tried_with[id(sr)] = len(solved)
             sr.problems, sr.match, sr.seed = list(sr.setup.problems), None, ""
-            sr.clicks, sr.label_checks = [], []
             attempt(sr)
     res.setups = sorted(todo, key=lambda x: x.setup.name)
     _combine(res, solved)

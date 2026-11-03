@@ -72,11 +72,6 @@ def checks(cam, site, serial: str, intrinsic=None) -> list[tuple[str, str, str]]
     solved = [s for s in cam.setups if s.solve is not None]
     out.append((OK if solved else BAD, "Targets found and labelled by the app",
                 f"{len(solved)} of {len(cam.setups)} setups"))
-    bad_clicks = [(s.setup.name, p) for s in cam.setups for p, _t in s.label_checks]
-    if bad_clicks:
-        setups = sorted({n for n, _ in bad_clicks})
-        out.append((WARN, "Crew's hand clicks had wrong targets (the app ignored them)",
-                    f"{len(bad_clicks)} wrong clicks in {', '.join(setups)}"))
 
     used = [s for s in cam.setups if s.passed]
     out.append((OK if len(used) >= MIN_SETUPS else BAD, "Enough good setups",

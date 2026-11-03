@@ -222,7 +222,7 @@ class ExtrinsicScreen(QWidget):
             v = sr.setup.van
             L.append(f"Van: heading {v.heading:.2f} (true), pitch {v.pitch:.2f}, roll {v.roll:.2f}, GPS {v.gps_status}, "
                      f"moved {v.spread_deg:.2f} deg while parked.")
-        L += [f"  - {p}" for p in sr.problems] + [f"  ? target {p}: {t}" for p, t in sr.label_checks]
+        L += [f"  - {p}" for p in sr.problems]
         self.details.setPlainText("\n".join(L))
 
     # ── save ─────────────────────────────────────────────────────────────────
