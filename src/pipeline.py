@@ -1,6 +1,6 @@
 """pipeline.py — one camera folder, start to finish, no GUI.
 
-The ONE calibration path.  One camera, Whole van and the CLI all call
+The ONE calibration path.  Load Intrinsic and the CLI both call
 run_folder(), so a fix here fixes all three:
 
   raw -> PNG (if any) -> board (auto-detect or given) -> detect -> filter

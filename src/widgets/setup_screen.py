@@ -208,18 +208,6 @@ class SetupScreen(QWidget):
         from src.calibration_store import normalise_role
         return normalise_role(self.role_combo.currentText())
 
-    def set_inputs(self, folder: str, role: str, serial: str) -> None:
-        """Fill in from the Whole van table."""
-        self.folder_input.setText(folder)
-        if role:
-            from src.calibration_store import normalise_role
-            role = normalise_role(role)
-            if self.role_combo.findText(role) < 0:
-                self.role_combo.addItem(role)
-            self.role_combo.setCurrentText(role)
-        self.serial_input.setText(serial)
-        self._update_run_button()
-
     def set_busy(self, busy: bool) -> None:
         for w in (self.run_button, self.browse_button, self.role_combo, self.board_combo):
             w.setEnabled(not busy)

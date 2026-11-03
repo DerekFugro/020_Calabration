@@ -1,13 +1,12 @@
 """app_window.py — the main window: one tab per step of the procedure.
 
-  Load Intrinsic     photos already collected -> grade -> save / export
-                     · One camera (default): setup -> report
-                     · Whole van: every camera in one table
+  Load Intrinsic     one camera's lens photos -> grade -> save / export
   Capture Intrinsic  the app takes the photos itself                (planned)
-  Load Extrinsic     Old School photos -> camera angles + lever arms
+  Load Extrinsic     one camera's Old School photos -> camera angles + lever arms
   Capture Extrinsic  the app runs the static setup itself           (planned)
   Boards             add, measure and print calibration boards
 
+One camera at a time (Derek, 2026-11-03): the Whole van table was removed.
 The van bar on top is shared: the van typed there labels every output.
 All screens report through the one status bar at the bottom.
 """
@@ -21,7 +20,6 @@ from PySide6.QtWidgets import (
 
 from src.styles import STYLESHEET_MAIN
 from src.widgets.one_camera_screen import OneCameraScreen
-from src.widgets.van_intrinsic_screen import VanIntrinsicScreen
 
 
 def _planned(title: str, lines: list[str]) -> QWidget:
@@ -45,18 +43,10 @@ class AppWindow(QMainWindow):
         # Van bar
         self.van_edit = QLineEdit(); self.van_edit.setPlaceholderText("ARAN65")
         self.van_edit.setMaximumWidth(140)
-        self.van_status = QLabel("Intrinsic: not graded")
         bar = QHBoxLayout()
-        bar.addWidget(QLabel("Van:")); bar.addWidget(self.van_edit)
-        bar.addSpacing(20); bar.addWidget(self.van_status, 1)
+        bar.addWidget(QLabel("Van:")); bar.addWidget(self.van_edit); bar.addStretch(1)
 
-        # Load Intrinsic = One camera (default) + Whole van
         self.single = OneCameraScreen()
-        self.van_screen = VanIntrinsicScreen()
-        self.load_intrinsic = QTabWidget()
-        self.load_intrinsic.addTab(self.single, "One camera")
-        self.load_intrinsic.addTab(self.van_screen, "Whole van")
-        self.load_intrinsic.setCurrentWidget(self.single)
 
         from src.widgets.boards_tab import BoardsTab
         from src.widgets.extrinsic_screen import ExtrinsicScreen
@@ -64,7 +54,7 @@ class AppWindow(QMainWindow):
         self.boards_tab = BoardsTab()
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self.load_intrinsic, "Load Intrinsic")
+        self.tabs.addTab(self.single, "Load Intrinsic")
         self.tabs.addTab(_planned("Capture Intrinsic — planned", [
             "The app will drive the camera and take the board photos itself.",
             "Live 3x3 grid: each area turns green once it has enough points and tilt.",
@@ -85,26 +75,14 @@ class AppWindow(QMainWindow):
 
         for screen in (self.single, self.extrinsic, self.boards_tab):
             screen.status.connect(say)
-        self.van_screen.status.connect(self._van_status)
         self.boards_tab.boards_changed.connect(self.single.setup_screen.reload_boards)
-        self.van_screen.van_changed.connect(self.van_edit.setText)
-        self.van_screen.open_requested.connect(self._open_in_single)
         self.van_edit.textChanged.connect(lambda t: setattr(self.single, "van", t.strip()))
 
     def _intrinsic_for(self, camera: str):
-        """A passed intrinsic for this camera from the Whole van table, or None."""
+        """This session's passed Load Intrinsic result for this camera, or None."""
         from src.extrinsic.intrinsic_source import from_run
-        for cam, serial, run in self.van_screen.graded():
-            if cam == camera:
-                got = from_run(run, serial)
-                if got is not None:
-                    return got
-        return None
-
-    def _van_status(self, text: str) -> None:
-        self.statusBar().showMessage(text)
-        self.van_status.setText(self.van_screen.summary_text())
-
-    def _open_in_single(self, run, role: str, serial: str) -> None:
-        self.single.show_result(run, role, serial)
-        self.load_intrinsic.setCurrentWidget(self.single)
+        from src.van_scan import camera_from_name
+        run = self.single.last_run
+        if run is None or camera_from_name(self.single.last_role) != camera:
+            return None
+        return from_run(run, self.single.last_serial)

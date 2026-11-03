@@ -74,13 +74,18 @@ class OneCameraScreen(QWidget):
         self.report_screen.set_data(run.cal, run.board, run.folder)
         self.stack.setCurrentWidget(self.report_screen)
 
-    def show_result(self, run, role: str, serial: str) -> None:
-        """Open the full report for a camera already graded in the Whole van table."""
-        self._role, self._serial = role, serial
-        self.setup_screen.set_inputs(run.folder, role, serial)
-        self._role = self.setup_screen.camera_role
-        self._show(run)
-        self.status.emit(f"{role} {serial}: {run.grade.headline}")
+    # Used by Load Extrinsic: the lens just calibrated here.
+    @property
+    def last_run(self):
+        return self._run
+
+    @property
+    def last_role(self) -> str:
+        return self._role
+
+    @property
+    def last_serial(self) -> str:
+        return self._serial
 
     def _back_to_setup(self) -> None:
         self.stack.setCurrentWidget(self.setup_screen)

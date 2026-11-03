@@ -13,15 +13,14 @@ uv run python main.py          # or double-click launch.bat
 
 | Tab | What it does |
 |---|---|
-| **Load Intrinsic › One camera** (default) | Pick the photo folder, camera and serial (both blank at start, typed every time), Run. If the folder was calibrated before, you can **Open results** or **Reprocess**. The report shows the PASS / NOT PASSED banner, why, what to shoot next, the 3×3 coverage grid, photos left out, and the numbers. **Save** writes `CAL_<serial>_<date>.yaml/.pdf` next to the photos, every format into `Calibration_<date>\` (fleet cameras), and publishes a PASS to the calibration store. |
-| **Load Intrinsic › Whole van** | Pick the van's Intrinsic folder: every camera folder is found (camera from the folder name, serial from the filed `<VAN>_<Camera>_<Serial>_intrinsic_cal.xml`), graded in one go and compared to the filed calibration. *Export all formats* per camera. |
-| **Load Extrinsic** | Old School photos → camera angles, height and lever arms. Needs a passed intrinsic per camera. Finds and labels the wall discs and tennis balls itself (old EOP files are never read; the app writes the EOPs), drops wrong targets, solves and combines the setups. Control is always the tennis-ball GCP in `control/Richmond` (never the revised GCP). *Save all formats* writes EOP + overlay per setup, YAML, JSON, CSV, PDF, PGExteriorCalibration RWC (angles unverified) and a one-page **`_CHECK.html`** for the office into `Extrinsic_<date>\`. |
+| **Load Intrinsic** (one camera at a time) | Pick the photo folder, camera and serial (both blank at start, typed every time), Run. If the folder was calibrated before, you can **Open results** or **Reprocess**. The report shows the PASS / NOT PASSED banner, why, what to shoot next, the 3×3 coverage grid, photos left out, and the numbers. **Save** writes `CAL_<serial>_<date>.yaml/.pdf` next to the photos, every format into `Calibration_<date>\` (fleet cameras), and publishes a PASS to the calibration store. |
+| **Load Extrinsic** (one camera at a time) | Pick one camera's Old School folder and its lens (this session's Load Intrinsic result or a lens file). Old School photos → camera angles, height and lever arms. Needs a passed intrinsic per camera. Finds and labels the wall discs and tennis balls itself (old EOP files are never read; the app writes the EOPs), drops wrong targets, solves and combines the setups. Control is always the tennis-ball GCP in `control/Richmond` (never the revised GCP). *Save all formats* writes EOP + overlay per setup, YAML, JSON, CSV, PDF, PGExteriorCalibration RWC (angles unverified) and a one-page **`_CHECK.html`** for the office into `Extrinsic_<date>\`. |
 | **Boards** | Add a board (dot layout CSV or chessboard) to `Cal_board\`, print the true-scale PDF, measure it (two readings each, saved automatically), test auto-detect. |
 | Capture Intrinsic / Capture Extrinsic | Planned. |
 
 ## How a lens calibration is made (`src/pipeline.py`)
 
-One path for One camera, Whole van and the CLI (`run_folder`):
+One path for Load Intrinsic and the CLI (`run_folder`):
 
 1. `.raw` → PNG (Lucid frames), board auto-detected from the library.
 2. Dots / corners found in every photo (in parallel).
@@ -192,7 +191,7 @@ src  pipeline.py              THE lens calibration path (run_folder)
   widgets    app_window.py          tabs, van bar, the one status bar
     one_camera_screen.py   One camera: setup -> report, save + publish
     setup_screen.py, report_screen.py
-    van_intrinsic_screen.py, extrinsic_screen.py, boards_tab.py, zoom_view.py
+    extrinsic_screen.py (one camera), boards_tab.py, zoom_view.py
 ```
 
 ## Notes

@@ -18,9 +18,10 @@ def win():
     w.close()
 
 
-def test_one_camera_is_default(win):
-    assert win.load_intrinsic.tabText(0) == "One camera"
-    assert win.load_intrinsic.currentWidget() is win.single
+def test_one_camera_at_a_time(win):
+    """2026-11-03: no Whole van table; Load Intrinsic is the one-camera screen."""
+    assert win.tabs.tabText(0) == "Load Intrinsic" and win.tabs.widget(0) is win.single
+    assert not hasattr(win, "van_screen")
 
 
 def test_setup_starts_blank(win):
