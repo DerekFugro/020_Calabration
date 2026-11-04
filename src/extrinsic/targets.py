@@ -160,9 +160,49 @@ def _local_wall(gray, x, y, r=32):
     return None if best is None else (best[1], best[2])
 
 
+BALL_M = 0.067                                       # tennis ball diameter
+
+
+def _local_ball(lab, x, y, dpx, sc):
+    """Look again for a tennis ball centred near (x, y), where the solved camera says
+    one must be.  Old balls are pale and JPEG washes the colour out, so the fixed
+    colour range misses them.  Here the ball only has to be more yellow and brighter
+    than the pavement around it: score = yellow (Lab b) + light (Lab L) above the
+    window's median, Otsu threshold, then the round part of about the right size
+    nearest the spot.  None if none."""
+    h, w = lab.shape[:2]
+    r = int(max(2.0 * dpx, 10 * sc))
+    x0, x1, y0, y1 = int(x) - r, int(x) + r + 1, int(y) - r, int(y) + r + 1
+    if x0 < 0 or y0 < 0 or x1 > w or y1 > h:
+        return None
+    P = cv2.GaussianBlur(lab[y0:y1, x0:x1].astype(np.float32), (3, 3), 0)
+    L, B = P[..., 0], P[..., 2]
+    score = (B - np.median(B)) + 0.5 * (L - np.median(L))
+    if score.max() < 6:                              # nothing stands out
+        return None
+    s8 = cv2.normalize(score, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    _, th = cv2.threshold(s8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    th &= ((B - np.median(B)) > 3).astype(np.uint8) * 255      # must be more yellow
+    th = cv2.morphologyEx(th, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    n, _lab, st, cen = cv2.connectedComponentsWithStats(th)
+    want = np.pi * (dpx / 2) ** 2
+    best = None
+    for i in range(1, n):
+        a, bw, bh = st[i, 4], st[i, 2], st[i, 3]
+        if not (0.3 * want <= a <= 2.5 * want + 4) or max(bw, bh) > 2 * min(bw, bh) + 2:
+            continue
+        if a / float(bw * bh) < 0.5:                 # not a filled round blob
+            continue
+        cx, cy = cen[i]
+        d = np.hypot(cx - r, cy - r)
+        if best is None or d < best[0]:
+            best = (d, cx + x0, cy + y0)
+    return None if best is None else (best[1], best[2])
+
+
 @dataclass
 class MatchResult:
-    matches: list = field(default_factory=list)      # (id, x, y, kind) kind: 'wall' | 'ball'
+    matches: list = field(default_factory=list)      # (id, x, y, kind) kind: 'wall' | 'ball' (+ ' (2nd look)')
     blobs_wall: np.ndarray = None
     blobs_ball: np.ndarray = None
     predicted: dict = field(default_factory=dict)    # id -> (x, y) from the final pose
@@ -262,8 +302,24 @@ def match_targets(bgr, site, K, D, rvec0, tvec0) -> MatchResult:
     pairs = _assign(cur, vis, site.ground, W, Bl, 4.0 * sc)
     got = {i for i, _, _ in pairs}
     extra = []
+    lab = None
+    R, _ = cv2.Rodrigues(rv)
+    used_balls = {j for _, j, g in pairs if g}
     for i in np.nonzero(vis)[0]:
-        if i in got or site.ground[i]:
+        if i in got:
+            continue
+        if site.ground[i]:
+            # same tight limit as the first pass, so a ball that rolled off its mark is not used
+            z = float((R @ G[i] + tv.reshape(3))[2])
+            if z <= 0.5:
+                continue
+            lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB) if lab is None else lab
+            p = _local_ball(lab, *cur[i], K[0, 0] * BALL_M / z, sc)
+            if p is None or np.hypot(p[0] - cur[i, 0], p[1] - cur[i, 1]) >= 4.0 * sc:
+                continue
+            if len(Bl) and any(np.hypot(Bl[j, 0] - p[0], Bl[j, 1] - p[1]) < 3 * sc for j in used_balls):
+                continue                             # already used for another ball
+            extra.append((i, p))
             continue
         p = _local_wall(gray, *cur[i], r=int(32 * sc))
         if p is not None and np.hypot(p[0] - cur[i, 0], p[1] - cur[i, 1]) < 6.0 * sc:
@@ -276,7 +332,8 @@ def match_targets(bgr, site, K, D, rvec0, tvec0) -> MatchResult:
 
     res.matches = ([(site.ids[i], *(map(float, (Bl[j, :2] if g else wall_xy(j)))),
                      "ball" if g else "wall") for i, j, g in pairs]
-                   + [(site.ids[i], float(p[0]), float(p[1]), "wall (2nd look)") for i, p in extra])
+                   + [(site.ids[i], float(p[0]), float(p[1]), "ball (2nd look)" if site.ground[i] else "wall (2nd look)")
+                      for i, p in extra])
     res.predicted = {site.ids[i]: (float(cur[i, 0]), float(cur[i, 1])) for i in np.nonzero(vis)[0]}
     res.rvec, res.tvec = rv, tv
     return res

@@ -161,3 +161,40 @@ def test_height_from_setups_with_tennis_balls():
     res2 = CameraResult(camera="ForwardRight", van="X", folder="f")
     _combine(res2, few)
     assert any("Park so at least 3 balls" in w for w in res2.warnings)
+
+
+def test_skip_dont_use_folders():
+    from src.extrinsic.oldschool import SKIP_RE
+    for name in ("20260807.145627 (Don't Use)", "20260807.145840 (Dont Use)", "RL5_Do Not Use",
+                 "Position 7 (Do Not Use)", "x (do not use)", "Bad", "do_not_use", "20260807 (Don\u2019t Use)"):
+        assert SKIP_RE.search(name), name
+    for name in ("20260807.145008", "Position 5", "20260510.165335 (Missing IRI on CSV)", "ROW1", "Badge"):
+        assert not SKIP_RE.search(name), name
+
+
+def test_closest_position_fleet_angles():
+    from src.extrinsic.run import closest_position
+    # ARAN69 front corners point about +-21 deg; they must not be named ROW
+    assert closest_position(21.1) == "ForwardRight"
+    assert closest_position(-21.7) == "ForwardLeft"
+    assert closest_position(39.6) == "ForwardRight" and closest_position(-38.9) == "ForwardLeft"
+    assert closest_position(-6.4) == "ROW" and closest_position(1.8) == "ROW"
+    assert closest_position(-163.1) == "RearLeft" and closest_position(-173.7) == "RearLeft"
+    assert closest_position(165.0) == "RearRight"
+    assert closest_position(90.0) == "Right" and closest_position(-90.0) == "Left"
+
+
+def test_local_ball_finds_pale_ball():
+    """A faded, washed-out ball the fixed colour range misses is found by the 2nd look."""
+    import cv2
+    import numpy as np
+    from src.extrinsic.targets import _local_ball, detect_balls
+    rng = np.random.default_rng(1)
+    img = np.clip(rng.normal(95, 6, (200, 200, 3)), 0, 255).astype(np.uint8)      # grey pavement
+    cv2.circle(img, (103, 98), 7, (150, 178, 170), -1)                           # pale green-white ball (BGR)
+    img = cv2.GaussianBlur(img, (3, 3), 0)
+    assert len(detect_balls(img)) == 0                                            # first pass misses it
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    p = _local_ball(lab, 100, 100, 14.0, 1.0)
+    assert p is not None and abs(p[0] - 103) < 1.5 and abs(p[1] - 98) < 1.5
+    assert _local_ball(cv2.cvtColor(np.full((200, 200, 3), 95, np.uint8), cv2.COLOR_BGR2LAB), 100, 100, 14.0, 1.0) is None

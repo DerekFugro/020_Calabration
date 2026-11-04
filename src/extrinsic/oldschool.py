@@ -22,7 +22,8 @@ import numpy as np
 
 from src.van_scan import camera_from_name, van_from_path
 
-SKIP_RE = re.compile(r"do[\s_]*not[\s_]*use|(^|[\\/])bad([\\/]|$)", re.I)
+# "do not use", "Do_Not_Use", "Don't Use", "Dont Use", or a folder called Bad
+SKIP_RE = re.compile(r"do(?:[\s_]*not|n['\u2019]?t)[\s_]*use|(^|[\\/])bad([\\/]|$)", re.I)
 
 
 @dataclass

@@ -42,8 +42,10 @@ MIN_GROUND_FOR_HEIGHT = 3
 
 # Normal pointing of each camera position (pan, + right of straight ahead).  Real
 # installs differ (customers sign off the angles), so the closest one names the camera.
-NOMINAL_PAN_DEG = {"ROW": 0.0, "ForwardRight": 45.0, "ForwardLeft": -45.0, "Right": 90.0,
-                   "Left": -90.0, "RearRight": 135.0, "RearLeft": -135.0}
+# Front and rear corners are the fleet's solved medians (Old School 2024-2026: FL -29,
+# FR +28, RL -163); they are not 45 deg off the axis.  RearRight is RearLeft mirrored.
+NOMINAL_PAN_DEG = {"ROW": 0.0, "ForwardRight": 28.0, "ForwardLeft": -28.0, "Right": 90.0,
+                   "Left": -90.0, "RearRight": 163.0, "RearLeft": -163.0}
 
 
 def closest_position(pan_deg: float) -> str:
