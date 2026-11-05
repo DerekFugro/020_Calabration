@@ -129,10 +129,3 @@ def test_same_layout_twice_is_refused(tmp_path):
     with pytest.raises(FileExistsError, match="already in the library as first"):
         bb.create_dot_board("second", IKEA, library=tmp_path)
 
-
-def test_unmeasured_board_warns_in_grade(tmp_path):
-    from src.grading import GradeReport, board_warning
-    folder = bb.create_dot_board("tb", IKEA, library=tmp_path)
-    rep = GradeReport(passed=True, headline="")
-    board_warning(rep, load_board_folder(folder))
-    assert rep.passed and any("not been measured" in w for w in rep.warnings)

@@ -240,14 +240,6 @@ def coverage_counts(points_xy: list, size) -> np.ndarray:
     return c
 
 
-def board_warning(rep, board) -> None:
-    """Warn when the board's print was never measured (Boards tab)."""
-    if rep is None or board is None:
-        return
-    if getattr(board, "print_measured", True) is False:
-        rep.warnings.append(f"Board {board.name}: the print has not been measured (Boards tab). "
-                            "A print stretched 1% one way adds about 0.9 px of error.")
-
 
 def _grade_blur(rep, cal_result) -> None:
     blur = np.array([b for b in getattr(cal_result, "photo_blur_px", []) or []], float)

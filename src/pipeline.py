@@ -110,9 +110,8 @@ def run_folder(folder: str, max_images: int = 0, boards=None, board=None,
         r.cal = calibrate_auto(r.detections, r.filter_results, board, progress_cb=say)
 
         say("Grading: coverage and repeatability…")
-        from src.grading import board_warning, grade, ray_disagreement_mrad
+        from src.grading import grade, ray_disagreement_mrad
         r.cal.grade = grade(r.cal)
-        board_warning(r.cal.grade, board)
 
         if filed_xml:
             from src.van_scan import read_filed_xml
