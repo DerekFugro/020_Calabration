@@ -264,3 +264,34 @@ def test_lens_file_dates_and_size(tmp_path):
     i = from_file(str(x))
     assert (i.width, i.height, i.serial) == (1920, 1080, "2000713")
     assert i.date.date().isoformat() == "2026-04-06" and i.date_what == "Lens calibrated"
+
+
+def test_target_files_record_every_target(tmp_path):
+    """<photo>.targets.json: van pose, used/why, and each target found / used / dropped."""
+    import json
+    from types import SimpleNamespace
+    import numpy as np
+    from src.extrinsic.target_files import write_target_files
+    site = SimpleNamespace(name="T", ids=["1", "2", "50"], ground=np.array([False, False, True]),
+                           enh_m=np.array([[1.0, 2, 3], [4, 5, 6], [7, 8, 9]]),
+                           index=lambda: {"1": 0, "2": 1, "50": 2})
+    photo = tmp_path / "20260404.102502" / "123.jpg"; photo.parent.mkdir(); photo.write_bytes(b"x")
+    van = SimpleNamespace(rows=5, gps_status="CADifferential", roll=0.1, pitch=0.2, heading=250.0,
+                          lat=37.5, lon=-77.4, elevation=60.0, spread_deg=0.01)
+    setup = SimpleNamespace(name="20260404.102502", photo=str(photo), pose_csv="ReviewData_1.csv", van=van)
+    match = SimpleNamespace(matches=[("1", 10.0, 20.0, "wall"), ("50", 30.0, 40.0, "ball (2nd look)")],
+                            predicted={"1": (11.0, 21.0), "2": (50.0, 60.0), "50": (31.0, 41.0)}, note="")
+    solve = SimpleNamespace(ids=["1"], loo_mm=np.array([7.5]), range_m=np.array([12.0]),
+                            dropped=[("50", "missed by 9 px: wrong target or wrong label")], R_bc=None,
+                            n_points=1, loo_rms_mm=7.5, lever_frd=None, up_ground_m=2.1,
+                            cam_enh=np.array([0.0, 0.0, 2.0]))
+    sr = SimpleNamespace(setup=setup, match=match, solve=solve, seed="other setup", passed=False,
+                         problems=["only 1 targets (need 10)"], ground_targets=0, counts_for_height=False)
+    cam = SimpleNamespace(van="ARAN62", camera="ROW", setups=[sr])
+    assert write_target_files(cam, site, run_id="SOLVE_x") == 1
+    d = json.loads((photo.parent / "123.targets.json").read_text())
+    assert d["run_id"] == "SOLVE_x" and d["van_pose"]["gps_status"] == "CADifferential" and not d["used"]
+    t = {x["id"]: x for x in d["targets"]}
+    assert t["1"]["used"] and t["1"]["miss_mm"] == 7.5 and t["1"]["kind"] == "wall disc"
+    assert not t["2"]["found"] and t["2"]["predicted_x_px"] == 50.0
+    assert t["50"]["kind"] == "tennis ball" and t["50"]["found_by"] == "second look" and "9 px" in t["50"]["dropped_why"]

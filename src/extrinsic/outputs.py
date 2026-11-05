@@ -164,6 +164,11 @@ def overlay(sr, site, K, D) -> np.ndarray | None:
 
 # ── per-camera files ─────────────────────────────────────────────────────────
 
+def _app_version() -> str:
+    from src.version import app_version
+    return app_version()
+
+
 def summary(cam, serial: str, intrinsic_source: str) -> dict:
     pan, tilt, roll = cam.pan_tilt_roll
     h, p, r = rwc_angles(cam)
@@ -172,6 +177,9 @@ def summary(cam, serial: str, intrinsic_source: str) -> dict:
     return {
         "van": cam.van, "camera": cam.camera, "serial": serial,
         "created": datetime.now().isoformat(timespec="seconds"),
+        "app_version": _app_version(),
+        "run_id": getattr(cam, "run_id", ""),
+        "per_target_detail": "<setup>/<photo>.targets.json (also beside each Old School photo)",
         "old_school_folder": cam.folder, "intrinsic": intrinsic_source,
         "grade": {"passed": cam.passed, "headline": cam.headline, "reasons": cam.reasons,
                   "warnings": cam.warnings},
@@ -243,6 +251,11 @@ def export_camera(cam, site, serial: str, intrinsic_source: str, camera_view: st
             cv2.imwrite(str(d / f"{pre}{pid}_targets.png"), img)
             overlays[sr.setup.name] = img
     data = summary(cam, serial, intrinsic_source)
+    try:
+        from src.extrinsic.target_files import write_target_files
+        write_target_files(cam, site, out_dir=out, run_id=getattr(cam, "run_id", ""))
+    except Exception:  # noqa: BLE001 - the detail file never costs the save
+        pass
     (out / f"{stem}_extrinsic.yaml").write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True),
                                                 encoding="utf-8")
     (out / f"{stem}_extrinsic.json").write_text(json.dumps(data, indent=2), encoding="utf-8")

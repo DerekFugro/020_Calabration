@@ -30,11 +30,21 @@ class _Worker(QThread):
         self.cs, self.site, self.intr = cs, site, intr
 
     def run(self):
+        from datetime import datetime
         from src.extrinsic.run import run_camera
         try:
-            self.done.emit(run_camera(self.cs, self.site, self.intr.K, self.intr.D, progress_cb=self.progress.emit))
+            res = run_camera(self.cs, self.site, self.intr.K, self.intr.D, progress_cb=self.progress.emit)
         except Exception as exc:  # noqa: BLE001
-            self.done.emit(exc)
+            self.done.emit(exc); return
+        # Every Solve leaves <photo>.targets.json beside each Old School photo, saved or not
+        # (src/extrinsic/target_files.py).  Logging never costs the solve.
+        res.run_id = f"SOLVE_{datetime.now():%Y%m%d_%H%M%S}"
+        try:
+            from src.extrinsic.target_files import write_target_files
+            write_target_files(res, self.site, run_id=res.run_id)
+        except Exception:  # noqa: BLE001
+            pass
+        self.done.emit(res)
 
 
 class ExtrinsicScreen(QWidget):
