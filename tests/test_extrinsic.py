@@ -198,3 +198,69 @@ def test_local_ball_finds_pale_ball():
     p = _local_ball(lab, 100, 100, 14.0, 1.0)
     assert p is not None and abs(p[0] - 103) < 1.5 and abs(p[1] - 98) < 1.5
     assert _local_ball(cv2.cvtColor(np.full((200, 200, 3), 95, np.uint8), cv2.COLOR_BGR2LAB), 100, 100, 14.0, 1.0) is None
+
+
+def _intr(serial="2000713", w=1920, h=1080, when=None, passed=True):
+    import numpy as np
+    from src.extrinsic.intrinsic_source import Intrinsic
+    K = np.array([[1700.0, 0, w / 2], [0, 1700.0, h / 2], [0, 0, 1]])
+    return Intrinsic(K, np.zeros(5), serial, "test lens" + ("" if passed else " (NOT PASSED)"), passed, "" if passed else "The lens did not pass.",
+                     width=w, height=h, date=when, date_what="Lens photos taken")
+
+
+def _os_setups(tmp_path, w=1920, h=1080, names=("20260404.102502", "20260404.120509")):
+    import cv2
+    import numpy as np
+    from types import SimpleNamespace
+    out = []
+    for n in names:
+        d = tmp_path / n; d.mkdir(exist_ok=True)
+        ph = d / "1.jpg"; cv2.imwrite(str(ph), np.zeros((h, w), np.uint8))
+        out.append(SimpleNamespace(folder=str(d), name=n, photo=str(ph)))
+    return out
+
+
+def test_lens_checks_all_good(tmp_path):
+    from datetime import datetime
+    from src.extrinsic.lens_check import OK, lens_checks
+    cks = lens_checks(_intr(when=datetime(2026, 4, 3, 9, 0)), _os_setups(tmp_path), "2000713")
+    assert all(s == OK for s, _, _ in cks), cks
+    dates = [d for s, t, d in cks if "same visit" in t][0]
+    assert "Fri 3 Apr 2026" in dates and "Sat 4 Apr 2026" in dates and "1 day apart" in dates
+
+
+def test_lens_checks_warn_in_plain_words(tmp_path):
+    from datetime import datetime
+    from src.extrinsic.lens_check import WARN, lens_checks, warnings_text
+    cks = lens_checks(_intr(serial="2000211", w=3840, h=2160, when=datetime(2026, 2, 18), passed=False),
+                      _os_setups(tmp_path), "2000713")
+    warn = {t: d for s, t, d in cks if s == WARN}
+    assert "The lens file looks like it is for a different camera" in warn
+    assert "2000211" in warn["The lens file looks like it is for a different camera"]
+    size = warn["The lens file is for a different photo size"]
+    assert "1920 × 1080" in size and "3840 × 2160" in size
+    visit = warn["The lens is from a different visit"]
+    assert "Wed 18 Feb 2026" in visit and "Sat 4 Apr 2026" in visit and "45 days before" in visit
+    assert any("did not pass" in t for t in warn)
+    assert len(warnings_text(cks)) == 4
+
+
+def test_lens_checks_missing_info(tmp_path):
+    from src.extrinsic.lens_check import WARN, lens_checks
+    cks = lens_checks(_intr(serial="", when=None), _os_setups(tmp_path), "")
+    titles = [t for s, t, _ in cks if s == WARN]
+    assert "Type the camera serial" in titles and "The lens file has no date" in titles
+    cks = lens_checks(_intr(serial=""), _os_setups(tmp_path), "2000713")
+    assert any(t == "Can't check the lens file is for this camera" for _, t, _ in cks)
+
+
+def test_lens_file_dates_and_size(tmp_path):
+    from src.extrinsic.intrinsic_source import from_file
+    x = tmp_path / "ARAN62_ForwardLeft_2000713_intrinsic_cal.xml"
+    x.write_text("""<IntrinsicCalibration><CalibrationDate>2026-04-06T10:11:12.1234567-04:00</CalibrationDate>
+<OpenCVCameraModel width="1920" height="1080"><Center x="960" y="540" /><FocalLength x="1700" y="1700" />
+<RadialDistortion k1="0" k2="0" k3="0" /><TangentialDistortion p1="0" p2="0" /></OpenCVCameraModel>
+</IntrinsicCalibration>""", encoding="utf-8")
+    i = from_file(str(x))
+    assert (i.width, i.height, i.serial) == (1920, 1080, "2000713")
+    assert i.date.date().isoformat() == "2026-04-06" and i.date_what == "Lens calibrated"

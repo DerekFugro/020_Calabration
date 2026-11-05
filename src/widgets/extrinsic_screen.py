@@ -8,6 +8,7 @@ works out the camera's angles, height and lever arms, and Save writes every form
 
 from __future__ import annotations
 
+import html
 import os
 
 import cv2
@@ -68,10 +69,12 @@ class ExtrinsicScreen(QWidget):
         f.addRow("Old School folder:", r1)
         f.addRow("Camera:", self.camera_lbl)
         f.addRow("Lens:", r2)
-        self.lens_warn = QLabel(""); self.lens_warn.setWordWrap(True)
-        self.lens_warn.setStyleSheet("color: #e0b050; font-weight: bold;"); self.lens_warn.hide()
-        f.addRow("", self.lens_warn)
         f.addRow("Serial:", self.serial)
+        # Is this the right lens file?  Plain words and dates, never a stop.
+        self.lens_info = QLabel(""); self.lens_info.setWordWrap(True)
+        self.lens_info.setTextFormat(Qt.TextFormat.RichText); self.lens_info.hide()
+        self.lens_info.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        f.addRow("Lens check:", self.lens_info)
         info = QLabel(f"Control: {self.site.name} tennis-ball survey ({len(self.site.ids)} targets); the revised "
                       "control file is never used.  Old EOP files are never read: the app finds the targets.")
         info.setStyleSheet(_DIM); info.setWordWrap(True)
@@ -106,6 +109,7 @@ class ExtrinsicScreen(QWidget):
         self.solve_btn.clicked.connect(self._solve)
         self.save_btn.clicked.connect(self._save)
         self.setups.currentRowChanged.connect(self._show_setup)
+        self.serial.textChanged.connect(lambda _t: self._lens_checks())
         self._buttons()
 
     # ── folder / lens ────────────────────────────────────────────────────────
@@ -138,6 +142,7 @@ class ExtrinsicScreen(QWidget):
         got = self._provider(self._cs.camera)
         if got is not None:
             self._set_lens(got)
+        self._lens_checks()
         self.status.emit(f"{self._cs.camera}: {len(self._cs.setups)} setups.")
         self._buttons()
 
@@ -152,13 +157,37 @@ class ExtrinsicScreen(QWidget):
             QMessageBox.warning(self, "Lens", str(exc))
 
     def _set_lens(self, intr):
+        # The serial is not filled in from the lens file: the person types the camera's
+        # serial, so a lens file for another camera shows up in the lens check.
         self._intr = intr
         self.lens.setText(intr.source)
-        self.lens_warn.setText("⚠ " + intr.warning if intr.warning else "")
-        self.lens_warn.setVisible(bool(intr.warning))
-        if intr.serial and not self.serial.text().strip():
-            self.serial.setText(intr.serial)
+        self._lens_checks()
         self._buttons()
+
+    def _lens_checks(self):
+        """Right lens file?  One line per check, a tick or a warning sign, plain words."""
+        from src.extrinsic.lens_check import OK, lens_checks
+        if self._intr is None:
+            self.lens_info.hide(); return []
+        cks = lens_checks(self._intr, self._cs.setups if self._cs else [], self.serial.text())
+        rows = []
+        for s, t, d in cks:
+            col, sym = ("#3cc83c", "&#10003;") if s == OK else ("#e0b050", "&#9888;")
+            rows.append(f"<div style='margin:2px 0'><span style='color:{col}; font-weight:bold'>{sym} {html.escape(t)}</span>"
+                        + (f"<br><span style='color:#b8c0c8'>{html.escape(d)}</span>" if d else "") + "</div>")
+        self.lens_info.setText("".join(rows)); self.lens_info.show()
+        self._fit_lens_info()
+        return cks
+
+    def _fit_lens_info(self):
+        # A word-wrapped rich-text label is often given one line too few; size it for its width.
+        w = max(self.lens_info.width(), self.width() - 260, 400)
+        self.lens_info.setMinimumHeight(self.lens_info.heightForWidth(w) + self.lens_info.fontMetrics().lineSpacing() + 4)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if self.lens_info.isVisible():
+            self._fit_lens_info()
 
     # ── solve ────────────────────────────────────────────────────────────────
     def _solve(self):
@@ -174,8 +203,9 @@ class ExtrinsicScreen(QWidget):
         if isinstance(res, Exception):
             QMessageBox.critical(self, "Solve", str(res)); self.status.emit(str(res)); return
         self._res = res
-        if self._intr is not None and self._intr.warning:
-            res.warnings.insert(0, "Lens: " + self._intr.warning)
+        from src.extrinsic.lens_check import warnings_text
+        lens_warn = warnings_text(self._lens_checks())
+        res.warnings[:0] = lens_warn
         ok = res.passed
         txt = f"<span style='font-size:16pt; font-weight:bold'>{'PASS' if ok else 'NOT PASSED'}</span>"
         if res.R_bc is not None:
@@ -184,8 +214,8 @@ class ExtrinsicScreen(QWidget):
                     f"{res.angle_spread_deg:.2f}°)  ·  height {res.up_ground_m:.3f} m  ·  forward "
                     f"{res.lever_frd[0]:.2f} m, right {res.lever_frd[1]:.2f} m (rough, GPS)")
         txt += "".join(f"<br>&bull; {r}" for r in res.reasons)
-        if self._intr is not None and self._intr.warning:
-            txt += f"<br><span style='color:#e0b050'>&#9888; Lens: {self._intr.warning}</span>"
+        for w in lens_warn:
+            txt += f"<br><span style='color:#e0b050'>&#9888; {html.escape(w.split('. ')[0])} (see Lens check above)</span>"
         fg, bg = ("#3cc83c", "#1b3a1f") if ok else ("#ff6b6b", "#4a1c1c")
         self.result.setText(txt)
         self.result.setStyleSheet(f"color: {fg}; background: {bg}; border: 1px solid {fg}; border-radius: 6px; padding: 8px;")

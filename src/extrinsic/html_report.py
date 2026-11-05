@@ -29,16 +29,6 @@ def _jpeg(img, width: int, q: int) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode("ascii") if ok else ""
 
 
-def _photo_width(cam) -> int | None:
-    for s in cam.setups:
-        p = s.setup.photo
-        if p and os.path.exists(p):
-            im = cv2.imread(p, cv2.IMREAD_REDUCED_GRAYSCALE_8)
-            if im is not None:
-                return im.shape[1] * 8
-    return None
-
-
 def checks(cam, site, serial: str, intrinsic=None) -> list[tuple[str, str, str]]:
     """(state, what, detail) — the list the office reads."""
     out = []
@@ -46,22 +36,14 @@ def checks(cam, site, serial: str, intrinsic=None) -> list[tuple[str, str, str]]
     out.append((OK, "Correct GCP file used",
                 f"{site.name}: {gcp[0].name if gcp else 'built in'} (built into the app, can't be swapped)"))
 
-    # lens file
+    # lens file: right camera, right photo size, same visit (plain words, dates shown)
     if intrinsic is None:
         out.append((WARN, "Lens file", "Not recorded"))
     else:
-        if intrinsic.graded_pass:
-            out.append((OK, "Lens file passed the app's lens check", intrinsic.source))
-        else:
-            out.append((WARN, getattr(intrinsic, "warning", "") or "Lens file not checked by this app",
-                        intrinsic.source))
-        if intrinsic.serial and serial and intrinsic.serial.strip() != serial.strip():
-            out.append((BAD, "Lens file is for a different camera",
-                        f"Lens file serial {intrinsic.serial}, this camera {serial}"))
-        w = _photo_width(cam)
-        if w and cam.K is not None and abs(cam.K[0, 2] - w / 2) > 0.1 * w:
-            out.append((BAD, "Lens file is the wrong size for these photos",
-                        f"Photos are {w} px wide; the lens file centre is at {cam.K[0, 2]:.0f} px"))
+        from src.extrinsic.lens_check import lens_checks
+        for s, t, d in lens_checks(intrinsic, [sr.setup for sr in cam.setups], serial):
+            out.append((OK if s == "ok" else WARN, t, d))
+        out.append((OK, "Lens file used", intrinsic.source))
 
     # camera name
     name_warn = [x for x in cam.warnings if "points" in x and ("folder says" in x or "not in the folder" in x)]

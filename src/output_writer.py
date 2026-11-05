@@ -64,6 +64,15 @@ def _unique_path(folder: Path, stem: str, ext: str) -> Path:
 #  YAML writer
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _photos_taken(folder) -> dict:
+    """First and last photo file time: when the lens photos were taken (for the
+    extrinsic's same-visit check)."""
+    from src.utils import photo_dates
+    f, l = photo_dates(str(folder))
+    return {"first": f.isoformat(timespec="seconds") if f else "",
+            "last": l.isoformat(timespec="seconds") if l else ""}
+
+
 def write_yaml(
     cal_result: CalibrationResult,
     board_config: BoardConfig,
@@ -91,6 +100,7 @@ def write_yaml(
         "serial_number":            serial,
         "camera_role":              role,
         "calibration_datetime":     dt.isoformat(timespec="seconds"),
+        "photos_taken":             _photos_taken(folder),
         "rms_reprojection_error":   round(float(cal_result.rms), 6),
         "image_count_used":         cal_result.image_count_used,
         "photos":                   _folder_summary(cal_result, folder),

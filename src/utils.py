@@ -8,6 +8,15 @@ import os
 _IMG_EXTS = ("*.jpg", "*.jpeg", "*.png", "*.JPG", "*.JPEG", "*.PNG")
 
 
+def photo_dates(folder: str):
+    """(first, last) file time of the photos in *folder* as datetimes, or (None, None)."""
+    from datetime import datetime
+    ts = [os.path.getmtime(p) for p in find_images(folder)]
+    if not ts:
+        return None, None
+    return datetime.fromtimestamp(min(ts)), datetime.fromtimestamp(max(ts))
+
+
 def find_images(folder: str) -> list[str]:
     """Return a sorted, de-duplicated list of JPG/PNG paths in *folder* (non-recursive)."""
     paths: set[str] = set()
