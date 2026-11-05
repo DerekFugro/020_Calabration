@@ -174,4 +174,4 @@ def limits_text() -> str:
     """One-line legend of the limits, for the GUI and PDF."""
     return (f"Green = >= {POINTS_GOOD} points and board angles vary >= {TILT_GOOD_DEG:g}°.  "
             f"Red = < {POINTS_POOR} points or angles vary < {TILT_POOR_DEG:g}°.  Yellow = in between.  "
-            f"The error (px) in each square is shown for information only.")
+            f"fit (px) = how far, on average, the dots in a square sit from where the finished lens says they should be; information only.")

@@ -40,8 +40,8 @@ _GRID_COLOURS = {
     WEAK: (C_AMBER, C_AMBER_BG),
     POOR: (C_RED,   C_RED_BG),
 }
-_GRID_CELL_W = 230
-_GRID_CELL_H = 92
+_GRID_CELL_W = 150
+_GRID_CELL_H = 50
 
 # ── Layout constants ─────────────────────────────────────────────────────────
 _KEY_W        = 200
@@ -109,7 +109,7 @@ class ReportScreen(QWidget):
         self.steady_box         = QLabel("")
         self.steady_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.steady_box.setWordWrap(True)
-        self.steady_box.setMinimumHeight(64)
+        self.steady_box.setMinimumHeight(30)
         self.grid_legend        = QLabel(limits_text())
         self.grid_legend.setWordWrap(True)
         self.grid_advice        = QLabel("")
@@ -249,7 +249,7 @@ class ReportScreen(QWidget):
         self.main_layout.addWidget(self.title_label)
         self.main_layout.addWidget(self.folder_label)
         self.main_layout.addWidget(self.grade_banner)
-        self.main_layout.addWidget(self.grid_frame, stretch=2)
+        self.main_layout.addWidget(self.grid_frame)          # compact: the details get the room
         self.main_layout.addWidget(self.steady_box)
         self.main_layout.addWidget(self.scroll_area, stretch=1)
         self.main_layout.addLayout(self.button_layout)
@@ -346,9 +346,9 @@ class ReportScreen(QWidget):
             st, big, small = g.steady
             fg, bg = {"good": (C_GREEN, C_GREEN_BG), "poor": (C_RED, C_RED_BG)}.get(st, (C_AMBER, C_AMBER_BG))
             self.steady_box.setText(
-                f"<span style='font-size:9pt'>Lens steady (photos split in two at random, each half solved, 6 times)</span><br>"
-                f"<span style='font-size:20pt; font-weight:bold'>{big}</span>&nbsp;&nbsp;"
-                f"<span style='font-size:10pt'>{small}</span>")
+                f"<span style='font-size:8pt'>Lens steady (photos split in two at random, each half solved, 6 times):</span>&nbsp; "
+                f"<span style='font-size:12pt; font-weight:bold'>{big}</span>&nbsp;&nbsp;"
+                f"<span style='font-size:8pt'>{small}</span>")
             self.steady_box.setStyleSheet(
                 f"background: rgb({bg[0]},{bg[1]},{bg[2]}); border: 1px solid rgb({fg[0]},{fg[1]},{fg[2]});"
                 f"color: rgb({fg[0]},{fg[1]},{fg[2]}); border-radius: 6px; padding: 4px;")
@@ -356,7 +356,7 @@ class ReportScreen(QWidget):
         else:
             self.steady_box.hide()
         self.grade_banner.setStyleSheet(
-            f"font-size: 16pt; font-weight: bold; padding: 10px; border-radius: 4px;"
+            f"font-size: 13pt; font-weight: bold; padding: 5px; border-radius: 4px;"
             f"color: rgb({fg[0]},{fg[1]},{fg[2]}); background: rgb({bg[0]},{bg[1]},{bg[2]});"
         )
         parts = []
@@ -404,18 +404,22 @@ class ReportScreen(QWidget):
                 err = "—" if cell.points == 0 else f"{cell.rms_px:.2f} px"
                 big, how = g.area_todo(cell) if g is not None and hasattr(g, "area_todo") else ("", "")
                 lbl.setText(
-                    f"<span style='font-size:9pt'>{cell.name}</span><br>"
-                    f"<span style='font-size:20pt; font-weight:bold'>{big}</span><br>"
-                    + (f"<span style='font-size:10pt'>{how}</span><br>" if how else "")
-                    + f"<span style='font-size:8pt'>{cell.points} points · {err} · "
+                    f"<span style='font-size:8pt'>{cell.name}</span>&nbsp; "
+                    f"<span style='font-size:12pt; font-weight:bold'>{big}</span>"
+                    + (f"<br><span style='font-size:8pt'>{how}</span>" if how else "")
+                    + f"<br><span style='font-size:7pt'>{cell.points} points · fit {err} · "
                       f"angles {cell.tilt_spread_deg:.0f}°</span>"
                 )
-                lbl.setToolTip("\n".join(cell.problems()) or "Good")
+                lbl.setToolTip(
+                    ("\n".join(cell.problems()) or "Good") + "\n\n"
+                    f"fit {err}: on average, the dots in this area sit this far (in pixels) from where "
+                    "the finished lens says they should be. Smaller is better. It is shown for "
+                    "information only: it does not decide PASS.")
                 lbl.setStyleSheet(
                     f"background: rgb({bg[0]},{bg[1]},{bg[2]});"
                     f"border: 1px solid rgb({fg[0]},{fg[1]},{fg[2]});"
                     f"color: rgb({fg[0]},{fg[1]},{fg[2]});"
-                    "border-radius: 6px; font-size: 9pt;"
+                    "border-radius: 5px; font-size: 8pt; padding: 3px 6px;"
                 )
         advice = grid.advice()
         if advice:
