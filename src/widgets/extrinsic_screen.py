@@ -14,8 +14,8 @@ import os
 import cv2
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QMessageBox,
-    QPlainTextEdit, QPushButton, QSplitter, QVBoxLayout, QWidget,
+    QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QMessageBox,
+    QPlainTextEdit, QPushButton, QScrollArea, QSplitter, QVBoxLayout, QWidget,
 )
 
 _DIM = "color: rgb(140,140,140); font-size: 8pt;"
@@ -86,13 +86,14 @@ class ExtrinsicScreen(QWidget):
 
         self.setups = QListWidget(); self.setups.setMaximumWidth(300)
         from src.widgets.zoom_view import ZoomView
-        self.view = ZoomView(); self.view.setMinimumHeight(320)
+        self.view = ZoomView(); self.view.setMinimumHeight(160)
         legend = QLabel("<span style='color:#3cc83c'>■ found and used</span> &nbsp; "
                         "<span style='color:#ff5050'>■ found but left out</span> &nbsp; "
                         "<span style='color:#ffb428'>■ should be in view, not found</span> &nbsp; "
                         "Wheel = zoom, drag = move, double-click = whole picture")
         legend.setStyleSheet("font-size: 8pt;")
         self.details = QPlainTextEdit(); self.details.setReadOnly(True); self.details.setMaximumHeight(170)
+        self.details.setMinimumHeight(48)
         lower = QSplitter(Qt.Orientation.Horizontal)
         lw = QWidget(); ll = QVBoxLayout(lw); ll.setContentsMargins(0, 0, 0, 0)
         ll.addWidget(QLabel("Setups")); ll.addWidget(self.setups)
@@ -100,8 +101,23 @@ class ExtrinsicScreen(QWidget):
         rl.addWidget(legend); rl.addWidget(self.view, 1); rl.addWidget(self.details)
         lower.addWidget(lw); lower.addWidget(rw); lower.setSizes([280, 900])
 
+        # The top part scrolls inside a splitter, so a long lens check can never make the
+        # window taller than the screen.  Drag the splitter bar to give either part more room.
+        # (Window-height fix from another session, 2026-11-05.)  The Solve / Save buttons sit
+        # under the scrolling part, so they are always in view, and the top grows to show the
+        # whole lens check when it can (_fit_top).
+        self._top = top = QWidget(); tl = QVBoxLayout(top); tl.setContentsMargins(0, 0, 0, 0)
+        tl.addWidget(box); tl.addWidget(self.result); tl.addStretch(1)
+        top_scroll = QScrollArea(); top_scroll.setWidgetResizable(True)
+        top_scroll.setFrameShape(QFrame.Shape.NoFrame); top_scroll.setWidget(top)
+        top_scroll.setMinimumHeight(120)
+        upper = QWidget(); ul = QVBoxLayout(upper); ul.setContentsMargins(0, 0, 0, 0)
+        ul.addWidget(top_scroll, 1); ul.addLayout(btns)
+        self._split = split = QSplitter(Qt.Orientation.Vertical); split.setChildrenCollapsible(False)
+        split.addWidget(upper); split.addWidget(lower)
+        split.setStretchFactor(0, 0); split.setStretchFactor(1, 1); split.setSizes([380, 470])
         lay = QVBoxLayout(self)
-        lay.addWidget(box); lay.addLayout(btns); lay.addWidget(self.result); lay.addWidget(lower, 1)
+        lay.addWidget(split, 1)
 
         fb.clicked.connect(self._browse)
         self.folder.returnPressed.connect(self._load_folder)
@@ -183,6 +199,18 @@ class ExtrinsicScreen(QWidget):
         # A word-wrapped rich-text label is often given one line too few; size it for its width.
         w = max(self.lens_info.width(), self.width() - 260, 400)
         self.lens_info.setMinimumHeight(self.lens_info.heightForWidth(w) + self.lens_info.fontMetrics().lineSpacing() + 4)
+        self._fit_top()
+
+    def _fit_top(self, share: float = 0.65):
+        """Give the top part the room it needs to show everything (up to 65% of the height);
+        the photos get the rest.  The splitter can still be dragged."""
+        sizes = self._split.sizes()
+        total = sum(sizes)
+        if total <= 0:
+            return
+        need = self._top.sizeHint().height() + 50          # + the Solve / Save row
+        top = max(200, min(need, int(share * total)))
+        self._split.setSizes([top, total - top])
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -218,6 +246,7 @@ class ExtrinsicScreen(QWidget):
             txt += f"<br><span style='color:#e0b050'>&#9888; {html.escape(w.split('. ')[0])} (see Lens check above)</span>"
         fg, bg = ("#3cc83c", "#1b3a1f") if ok else ("#ff6b6b", "#4a1c1c")
         self.result.setText(txt)
+        self._fit_top()
         self.result.setStyleSheet(f"color: {fg}; background: {bg}; border: 1px solid {fg}; border-radius: 6px; padding: 8px;")
         self.result.show()
         self.setups.clear()
