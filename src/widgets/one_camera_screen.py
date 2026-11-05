@@ -51,8 +51,18 @@ class OneCameraScreen(QWidget):
             return
         self._role, self._serial = self.setup_screen.camera_role, serial
         self.setup_screen.set_busy(True)
+        from src.van_scan import camera_from_name, van_from_computer, van_from_path
+        if self.van:
+            van, van_from = self.van, ("computer name" if self.van == van_from_computer() else "typed in the van box")
+        else:
+            van = van_from_path(folder)
+            van_from = "folder path" if van else "not known"
+        inputs = {"van": van, "van_from": van_from,
+                  "camera": camera_from_name(self._role) or self._role, "camera_from": "picked on the setup screen",
+                  "serial": serial, "serial_from": "typed on the setup screen",
+                  "board_picked": getattr(board, "name", None) or "auto-detect"}
         from src.workers import FolderWorker
-        self._worker = FolderWorker(folder, board, parent=self)
+        self._worker = FolderWorker(folder, board, parent=self, inputs=inputs)
         self._worker.progress.connect(self.status.emit)
         self._worker.done.connect(self._on_finished)
         self._worker.start()
@@ -128,13 +138,26 @@ class OneCameraScreen(QWidget):
         dt = datetime.now()
         try:
             yaml_path, pdf_path = write_outputs(run.cal, run.board, self._serial, run.detections,
-                                                run.filter_results, run.folder, dt=dt, role=self._role)
+                                                run.filter_results, run.folder, dt=dt, role=self._role,
+                                                run_id=getattr(run, "run_id", ""))
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Save Error", str(exc))
             return
         note = (f"YAML:  {yaml_path.name}\nPDF:   {pdf_path.name}\nDots:  <photo>.dots.json beside each photo "
                 f"(written by every run)\n\nSaved next to the photos:\n{run.folder}")
+        self._export_dir = ""
         note += self._export_fleet_formats(dt)
+        if getattr(run, "run_log", ""):
+            try:
+                from src.run_log import record_save
+                from src.van_scan import camera_from_name, van_from_path
+                record_save(run.run_log, cal_yaml=yaml_path.name, cal_pdf=pdf_path.name,
+                            formats_folder=self._export_dir or None,
+                            van=self.van or van_from_path(run.folder),
+                            camera=camera_from_name(self._role) or self._role, serial=self._serial)
+                note += f"\nRun log: {Path(run.run_log).name}"
+            except Exception:  # noqa: BLE001 - the save itself already worked
+                pass
         QMessageBox.information(self, "Files Saved", note)
         self.status.emit(f"Saved next to the photos: {yaml_path.name}")
 
@@ -161,6 +184,8 @@ class OneCameraScreen(QWidget):
             c = Intrinsics.from_result(run.cal, van, cam, self._serial, board=run.board.name,
                                        date=dt, image_folder=run.folder)
             out = Path(run.folder) / f"Calibration_{dt:%Y%m%d_%H%M%S}"
-            return f"\n\nAll formats ({len(export_all(c, out))} files) in:\n{out}"
+            n = len(export_all(c, out))
+            self._export_dir = out.name
+            return f"\n\nAll formats ({n} files) in:\n{out}"
         except Exception as exc:  # noqa: BLE001
             return f"\n\nOther formats FAILED: {exc}"

@@ -71,6 +71,11 @@ def _photos_taken(folder) -> dict:
             "last": l.isoformat(timespec="seconds") if l else "", "from": how}
 
 
+def _app_version() -> str:
+    from src.version import app_version
+    return app_version()
+
+
 def write_yaml(
     cal_result: CalibrationResult,
     board_config: BoardConfig,
@@ -78,6 +83,7 @@ def write_yaml(
     image_folder: str | Path,
     dt: datetime | None = None,
     role: str = "",
+    run_id: str = "",
 ) -> Path:
     """Serialise calibration results to a YAML file.
 
@@ -97,6 +103,8 @@ def write_yaml(
         "serial_number":            serial,
         "camera_role":              role,
         "calibration_datetime":     dt.isoformat(timespec="seconds"),
+        "app_version":              _app_version(),
+        "run_id":                   run_id,
         "photos_taken":             _photos_taken(folder),
         "rms_reprojection_error":   round(float(cal_result.rms), 6),
         "image_count_used":         cal_result.image_count_used,
@@ -348,7 +356,7 @@ def write_pdf(
     pdf.set_font("Helvetica", size=9)
     pdf.cell(_CW, 5,
              f"Generated: {dt.strftime('%Y-%m-%d  %H:%M:%S')}    "
-             f"Camera Serial: {serial}",
+             f"Camera Serial: {serial}    App: {_app_version()}",
              align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", size=8)
     for line in _folder_lines(cal_result, folder):
@@ -463,6 +471,7 @@ def write_outputs(
     image_folder: str | Path,
     dt: datetime | None = None,
     role: str = "",
+    run_id: str = "",
 ) -> tuple[Path, Path]:
     """Write YAML + PDF with a shared timestamp.  Returns (yaml_path, pdf_path).
 
@@ -470,7 +479,7 @@ def write_outputs(
     folder is stamped with the same one).
     """
     dt = dt or datetime.now()
-    yaml_path = write_yaml(cal_result, board_config, serial, image_folder, dt, role)
+    yaml_path = write_yaml(cal_result, board_config, serial, image_folder, dt, role, run_id)
     pdf_path = write_pdf(
         cal_result, board_config, serial,
         detections, filter_results, image_folder, dt,

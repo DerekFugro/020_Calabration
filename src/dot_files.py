@@ -40,8 +40,10 @@ def _fit(obj, img, K, D):
     return np.hypot(*(pr.reshape(-1, 2) - img).T)
 
 
-def write_dot_files(cal, board, detections, filter_results) -> int:
-    """Write the files; returns how many were written.  Never raises for one bad photo."""
+def write_dot_files(cal, board, detections, filter_results, run_id: str = "", info: dict | None = None) -> int:
+    """Write the files; returns how many were written.  Never raises for one bad photo.
+    *info* (optional) is filled with {photo path: status, why, dots_found, fit_rms_px}
+    for the run log."""
     K = None if cal is None else np.asarray(cal.camera_matrix, np.float64)
     D = None if cal is None else np.asarray(cal.dist_coeffs, np.float64).ravel()
     all_obj = board.get_all_object_points()
@@ -80,7 +82,11 @@ def write_dot_files(cal, board, detections, filter_results) -> int:
                                  "board_x_mm": round(float(obj[j, 0]), 3), "board_y_mm": round(float(obj[j, 1]), 3),
                                  "fit_px": None if fit is None else round(float(fit[j]), 3)})
             blur = getattr(det, "edge_blur_px", float("nan"))
+            if info is not None:
+                info[k] = {"status": status, "why": why, "dots_found": len(dots), "fit_rms_px": fit_rms}
             doc = {
+                "run_id": run_id,
+                "run_log": f"{run_id}.json in the photo folder" if run_id else "",
                 "photo": os.path.basename(det.image_path),
                 "written": stamp,
                 "image_size": list(det.image_size) if det.image_size else None,

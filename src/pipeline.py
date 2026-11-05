@@ -10,6 +10,7 @@ run_folder(), so a fix here fixes all three:
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -39,6 +40,8 @@ class FolderRun:
     moved: list = field(default_factory=list)   # (file, reason) moved to NotUsed
     move_note: str = ""
     error: str = ""
+    run_id: str = ""                        # RUN_<date>_<time>; also in every <photo>.dots.json
+    run_log: str = ""                       # path of RUN_<...>.json (src/run_log.py)
 
     @property
     def grade(self):
@@ -51,7 +54,8 @@ class FolderRun:
 
 
 def run_folder(folder: str, max_images: int = 0, boards=None, board=None,
-               filed_xml: str = "", progress_cb=None, change_folder: bool = True) -> FolderRun:
+               filed_xml: str = "", progress_cb=None, change_folder: bool = True,
+               inputs: dict | None = None) -> FolderRun:
     """Calibrate and grade one folder of board photos.  Never raises: errors land in .error.
 
     change_folder: allowed to write into the photo folder — convert .raw files to
@@ -62,6 +66,8 @@ def run_folder(folder: str, max_images: int = 0, boards=None, board=None,
     change_folder = change_folder and not max_images
     say = progress_cb or (lambda _m: None)
     r = FolderRun(folder=folder)
+    from datetime import datetime
+    started, trace = datetime.now(), ""
     try:
         from src.utils import find_images
         if change_folder:
@@ -124,12 +130,20 @@ def run_folder(folder: str, max_images: int = 0, boards=None, board=None,
                 r.vs_filed_10m_mm = float(np.percentile(d, 95) * 10.0)
     except Exception as exc:  # noqa: BLE001
         r.error = str(exc)
-    # Every run leaves a <photo>.dots.json beside each photo (src/dot_files.py), pass or
-    # fail, saved or not.  Not on a read-only CLI check (change_folder off).
-    if change_folder and r.detections and r.board is not None:
+        import traceback
+        trace = traceback.format_exc()
+    # Every run leaves RUN_<date>_<time>.json in the folder (never overwritten) and a
+    # <photo>.dots.json beside each photo, pass or fail, saved or not, so months later a
+    # person or an AI agent can see exactly what happened.  Not on a read-only CLI check.
+    if change_folder and os.path.isdir(folder):
         try:
-            from src.dot_files import write_dot_files
-            write_dot_files(r.cal, r.board, r.detections, r.filter_results)
-        except Exception:  # noqa: BLE001 - never costs the run
+            from src.run_log import new_run_id, write_run_log
+            r.run_id = new_run_id(folder, started)
+            info = {}
+            if r.detections and r.board is not None:
+                from src.dot_files import write_dot_files
+                write_dot_files(r.cal, r.board, r.detections, r.filter_results, run_id=r.run_id, info=info)
+            r.run_log = str(write_run_log(r, r.run_id, started, inputs, trace, info))
+        except Exception:  # noqa: BLE001 - logging never costs the run
             pass
     return r
