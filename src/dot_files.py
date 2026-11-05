@@ -49,6 +49,8 @@ def write_dot_files(cal, board, detections, filter_results) -> int:
     stamp = datetime.now().isoformat(timespec="seconds")
     n = 0
     for det, filt in zip(detections, filter_results):
+        if not det.image_path or not os.path.isfile(det.image_path):
+            continue                      # only ever beside a real photo
         try:
             k = key(det.image_path)
             if k in used:
