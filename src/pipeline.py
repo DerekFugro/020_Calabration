@@ -124,4 +124,12 @@ def run_folder(folder: str, max_images: int = 0, boards=None, board=None,
                 r.vs_filed_10m_mm = float(np.percentile(d, 95) * 10.0)
     except Exception as exc:  # noqa: BLE001
         r.error = str(exc)
+    # Every run leaves a <photo>.dots.json beside each photo (src/dot_files.py), pass or
+    # fail, saved or not.  Not on a read-only CLI check (change_folder off).
+    if change_folder and r.detections and r.board is not None:
+        try:
+            from src.dot_files import write_dot_files
+            write_dot_files(r.cal, r.board, r.detections, r.filter_results)
+        except Exception:  # noqa: BLE001 - never costs the run
+            pass
     return r

@@ -1,6 +1,8 @@
 """dot_files.py - one <photo>.dots.json beside each lens photo, for trouble-shooting.
 
-Written at Save (src/output_writer.write_outputs).  Each file says whether the photo
+Written at the end of every run (src/pipeline.run_folder), whether it passed, failed
+or is never saved, so months later a person or an AI agent can see exactly what the
+app found in each photo.  A new run of the same folder replaces them.  Each file says whether the photo
 was used, left out (and why) or never usable, and lists every dot (or chessboard
 corner) found in it: its number on the board, where it was found (px), where it is
 on the board (mm), and its fit - how far it sits from where the finished lens says
@@ -40,8 +42,8 @@ def _fit(obj, img, K, D):
 
 def write_dot_files(cal, board, detections, filter_results) -> int:
     """Write the files; returns how many were written.  Never raises for one bad photo."""
-    K = np.asarray(cal.camera_matrix, np.float64)
-    D = np.asarray(cal.dist_coeffs, np.float64).ravel()
+    K = None if cal is None else np.asarray(cal.camera_matrix, np.float64)
+    D = None if cal is None else np.asarray(cal.dist_coeffs, np.float64).ravel()
     all_obj = board.get_all_object_points()
     key = lambda p: os.path.normcase(os.path.abspath(str(p)))  # noqa: E731
     used = {key(p) for p, _o, _i in getattr(cal, "points_used", [])}
@@ -59,6 +61,8 @@ def write_dot_files(cal, board, detections, filter_results) -> int:
                 status, why = "left out automatically", removed[k]
             elif det.load_error:
                 status, why = "could not be read", det.load_error_msg
+            elif cal is None and getattr(filt, "accepted", False):
+                status, why = "usable, but the calibration did not finish", ""
             else:
                 status, why = "not used", getattr(filt, "reason", "")
             dots, fit_rms = [], None
@@ -68,7 +72,7 @@ def write_dot_files(cal, board, detections, filter_results) -> int:
                 okk = ids < len(all_obj)
                 ids, img = ids[okk], img[okk]
                 obj = all_obj[ids].reshape(-1, 3)
-                fit = _fit(obj, img, K, D)
+                fit = None if K is None else _fit(obj, img, K, D)
                 if fit is not None:
                     fit_rms = round(float(np.sqrt(np.mean(fit ** 2))), 3)
                 for j, (i, (x, y)) in enumerate(zip(ids, img)):
