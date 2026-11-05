@@ -84,8 +84,10 @@ def write_dot_files(cal, board, detections, filter_results, run_id: str = "", in
             blur = getattr(det, "edge_blur_px", float("nan"))
             if info is not None:
                 info[k] = {"status": status, "why": why, "dots_found": len(dots), "fit_rms_px": fit_rms}
+            from src.version import app_version
             doc = {
                 "run_id": run_id,
+                "app_version": app_version(),
                 "run_log": f"{run_id}.json in the photo folder" if run_id else "",
                 "photo": os.path.basename(det.image_path),
                 "written": stamp,

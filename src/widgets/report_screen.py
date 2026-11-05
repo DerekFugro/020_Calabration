@@ -157,6 +157,10 @@ class ReportScreen(QWidget):
 
         self.new_cal_button = QPushButton("New Calibration")
         self.new_cal_button.setFixedHeight(BUTTON_H)
+        # Pop-up photo check (src/viewer: separate window, reads the files beside the photos)
+        self.view_button = QPushButton("View photos...")
+        self.view_button.setFixedHeight(BUTTON_H)
+        self.view_button.clicked.connect(self._open_viewer)
 
         # ── Outlier panel (hidden until bad images found) ──────────────────
         self.outlier_group   = QGroupBox("Photos left out automatically")
@@ -241,6 +245,7 @@ class ReportScreen(QWidget):
         self.button_layout = QHBoxLayout()
         self.button_layout.setSpacing(SPACING)
         self.button_layout.addWidget(self.new_cal_button)
+        self.button_layout.addWidget(self.view_button)
         self.button_layout.addStretch()
         self.button_layout.addWidget(self.save_button)
 
@@ -381,6 +386,10 @@ class ReportScreen(QWidget):
             parts.append("<i>Saving still writes every file next to the photos.</i>")
         self.grade_details.setText("<br>".join(parts))
         self.grade_banner.show(); self.grade_details.show()
+
+    def _open_viewer(self) -> None:
+        from src.viewer import open_viewer
+        open_viewer(self._who[3], parent=self)
 
     def _update_panel(self, cal_result, g) -> None:
         """Beside the squares: the four things to check before Save, tick or warning each."""

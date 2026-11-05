@@ -71,6 +71,9 @@ class ExtrinsicScreen(QWidget):
         self.serial = QLineEdit(); self.serial.setPlaceholderText("Camera serial")
         self.solve_btn = QPushButton("Solve"); self.solve_btn.setObjectName("primary_button")
         self.save_btn = QPushButton("Save all formats")
+        # Pop-up photo check (src/viewer): each setup's targets from its .targets.json
+        self.view_btn = QPushButton("View photos...")
+        self.view_btn.clicked.connect(self._open_viewer)
 
         box = QGroupBox("Camera")
         f = QFormLayout(box)
@@ -89,7 +92,7 @@ class ExtrinsicScreen(QWidget):
                       "control file is never used.  Old EOP files are never read: the app finds the targets.")
         info.setStyleSheet(_DIM); info.setWordWrap(True)
         f.addRow(info)
-        btns = QHBoxLayout(); btns.addStretch(1); btns.addWidget(self.solve_btn); btns.addWidget(self.save_btn)
+        btns = QHBoxLayout(); btns.addStretch(1); btns.addWidget(self.view_btn); btns.addWidget(self.solve_btn); btns.addWidget(self.save_btn)
 
         self.result = QLabel(""); self.result.setWordWrap(True)
         self.result.setAlignment(Qt.AlignmentFlag.AlignCenter); self.result.hide()
@@ -315,6 +318,10 @@ class ExtrinsicScreen(QWidget):
             msg += "\n\nNot passed: files are named NOT_PASSED_."
         QMessageBox.information(self, "Saved", msg)
         self.status.emit(f"Saved: {out}")
+
+    def _open_viewer(self):
+        from src.viewer import open_viewer
+        open_viewer(self.folder.text().strip(), parent=self)
 
     def _buttons(self, busy=None):
         if busy is None:
