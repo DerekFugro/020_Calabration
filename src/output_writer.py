@@ -475,4 +475,7 @@ def write_outputs(
         cal_result, board_config, serial,
         detections, filter_results, image_folder, dt,
     )
+    # one <photo>.dots.json beside each photo, for trouble-shooting (src/dot_files.py)
+    from src.dot_files import write_dot_files
+    write_dot_files(cal_result, board_config, detections, filter_results)
     return yaml_path, pdf_path

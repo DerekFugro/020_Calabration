@@ -285,3 +285,37 @@ def test_write_outputs_same_timestamp(cal, cfg, detections, filters, tmp_path):
     assert yaml_ts == pdf_ts, (
         f"Timestamp mismatch: {yaml_ts} vs {pdf_ts}"
     )
+
+
+def test_dot_files_beside_each_photo(tmp_path):
+    """Save writes <photo>.dots.json: status, dot numbers, px, board mm and fit."""
+    import json
+    from types import SimpleNamespace
+    import cv2
+    import numpy as np
+    from src.dot_files import write_dot_files
+    obj = np.array([[x * 30.0, y * 30.0, 0] for y in range(6) for x in range(8)], np.float32)
+    board = SimpleNamespace(name="testboard", get_all_object_points=lambda: obj)
+    K = np.array([[1000.0, 0, 960], [0, 1000.0, 540], [0, 0, 1]]); D = np.zeros(5)
+    dets, filts, used = [], [], []
+    for k in range(3):
+        p = tmp_path / f"img{k}.jpg"; p.write_bytes(b"x")
+        rv, tv = np.array([0.1 * k, 0.05, 0.0]), np.array([-100.0, -80.0, 600.0 + 50 * k])
+        img, _ = cv2.projectPoints(obj, rv, tv, K, D)
+        ids = np.arange(len(obj)).reshape(-1, 1)
+        dets.append(SimpleNamespace(image_path=str(p), image_size=(1920, 1080), charuco_ids=ids,
+                                    charuco_corners=img.astype(np.float32), load_error=False,
+                                    load_error_msg="", edge_blur_px=1.2))
+        filts.append(SimpleNamespace(accepted=k < 2, reason="" if k < 2 else "Too blurry"))
+        if k == 0:
+            used.append((str(p), obj, img.reshape(-1, 2)))
+    cal = SimpleNamespace(camera_matrix=K, dist_coeffs=D, points_used=used,
+                          auto_removed=[(str(tmp_path / "img1.jpg"), "fits far worse than the rest")])
+    assert write_dot_files(cal, board, dets, filts) == 3
+    d0 = json.loads((tmp_path / "img0.dots.json").read_text())
+    assert d0["status"] == "used" and d0["dots_found"] == 48 and d0["dots"][9]["n"] == 9
+    assert d0["dots"][9]["board_x_mm"] == 30.0 and d0["fit_rms_px"] < 0.01
+    d1 = json.loads((tmp_path / "img1.dots.json").read_text())
+    assert d1["status"] == "left out automatically" and "worse" in d1["why"]
+    d2 = json.loads((tmp_path / "img2.dots.json").read_text())
+    assert d2["status"] == "not used" and d2["why"] == "Too blurry"

@@ -132,7 +132,8 @@ class OneCameraScreen(QWidget):
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Save Error", str(exc))
             return
-        note = f"YAML:  {yaml_path.name}\nPDF:   {pdf_path.name}\n\nSaved next to the photos:\n{run.folder}"
+        note = (f"YAML:  {yaml_path.name}\nPDF:   {pdf_path.name}\nDots:  one <photo>.dots.json beside each "
+                f"photo (for trouble-shooting)\n\nSaved next to the photos:\n{run.folder}")
         note += self._export_fleet_formats(dt)
         QMessageBox.information(self, "Files Saved", note)
         self.status.emit(f"Saved next to the photos: {yaml_path.name}")
