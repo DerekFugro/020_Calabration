@@ -2,11 +2,10 @@
 
   Setup (folder, camera, serial)  ->  FolderWorker (src/pipeline.run_folder)  ->  Report
 
-Saving writes the working CAL_ files next to the photos, every other format
-into Calibration_<date> (fleet cameras), and publishes a copy of the YAML to
-the shared calibration store (`H:\\001_Mahine_App_Specs\\Calibrations`) as
-`YYYYMMDD_HHMMSS_<Type>\\<ROLE>_<SERIAL>.yaml`.  Only a PASS is published —
-the store is append-only.  A failed publish never costs the local files.
+Saving writes everything next to the photos: the working CAL_ files, and every
+other format into Calibration_<date> (fleet cameras).  Nothing is saved anywhere
+else (Derek, 2026-11-05: the app is now a generic calibration tool; there is no
+shared calibration store).
 """
 
 from __future__ import annotations
@@ -18,7 +17,6 @@ from PySide6.QtCore import QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMessageBox, QStackedWidget, QVBoxLayout, QWidget
 
-from src.calibration_store import StoreError, publish, store_path
 from src.output_writer import write_outputs
 from src.widgets.report_screen import ReportScreen
 from src.widgets.setup_screen import SetupScreen
@@ -124,28 +122,17 @@ class OneCameraScreen(QWidget):
         run = self._run
         if run is None:
             return
-        dt = datetime.now()     # one stamp for the CAL_ pair and the store file
+        dt = datetime.now()
         try:
             yaml_path, pdf_path = write_outputs(run.cal, run.board, self._serial, run.detections,
                                                 run.filter_results, run.folder, dt=dt, role=self._role)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Save Error", str(exc))
             return
-        note = f"YAML:  {yaml_path.name}\nPDF:   {pdf_path.name}\n\nSaved to:\n{run.folder}"
+        note = f"YAML:  {yaml_path.name}\nPDF:   {pdf_path.name}\n\nSaved next to the photos:\n{run.folder}"
         note += self._export_fleet_formats(dt)
-        stored, why = self._publish(yaml_path, dt)
-        if stored is not None:
-            QMessageBox.information(
-                self, "Files Saved",
-                f"{note}\n\nPublished to the calibration store:\n"
-                f"{stored.parent.name}\\{stored.name}\n{stored.parent.parent}")
-            self.status.emit(f"Saved: {yaml_path.name}  ·  published: {stored.name}")
-        else:
-            QMessageBox.warning(
-                self, "Saved Locally — Not Published",
-                f"{note}\n\nThe calibration was NOT published to the store:\n{why}\n\n"
-                f"Store: {store_path()}")
-            self.status.emit(f"Saved: {yaml_path.name}  ·  NOT published to the store")
+        QMessageBox.information(self, "Files Saved", note)
+        self.status.emit(f"Saved next to the photos: {yaml_path.name}")
 
     def _export_fleet_formats(self, dt: datetime) -> str:
         """Fleet cameras: also write every format (src/export_formats.py)."""
@@ -173,14 +160,3 @@ class OneCameraScreen(QWidget):
             return f"\n\nAll formats ({len(export_all(c, out))} files) in:\n{out}"
         except Exception as exc:  # noqa: BLE001
             return f"\n\nOther formats FAILED: {exc}"
-
-    def _publish(self, yaml_path: Path, dt: datetime) -> tuple[Path | None, str]:
-        """Copy the YAML into the store.  (path, "") or (None, why).  Never fatal."""
-        if not self._role:
-            return None, "No camera was set, so the store filename can't be built."
-        try:
-            return publish(yaml_path, self._role, self._serial, dt, passed=self._run.passed), ""
-        except StoreError as exc:
-            return None, str(exc)
-        except OSError as exc:  # noqa: BLE001 — drive offline, permissions, …
-            return None, f"Could not write to the store: {exc}"

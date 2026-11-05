@@ -382,8 +382,7 @@ class ReportScreen(QWidget):
             parts.append("<b>Worst photos:</b> " + ", ".join(
                 f"{html.escape(Path(p).name)} ({e:.1f} px)" for p, e in g.worst_images))
         if not g.passed:
-            parts.append("<i>Saving still writes the local files; publishing to the store "
-                         "needs a PASS.</i>")
+            parts.append("<i>Saving still writes every file next to the photos.</i>")
         self.grade_details.setText("<br>".join(parts))
         self.grade_banner.show(); self.grade_details.show()
 

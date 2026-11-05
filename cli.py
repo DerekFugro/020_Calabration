@@ -10,7 +10,7 @@ Examples (from the app folder):
 
 --board takes "auto" (default) or a board name / Cal_board folder name.
 --save writes the CAL_ YAML + PDF next to the images, exactly like the GUI's
-Save.  The CLI never publishes to the calibration store; use the GUI for that.
+Save.  Everything is written next to the images only.
 """
 
 from __future__ import annotations

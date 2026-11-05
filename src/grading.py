@@ -207,7 +207,7 @@ def repeatability(cal_result) -> Repeatability | None:
 
 
 def sanity_problems(K, D, size, images_used: int) -> list[str]:
-    """Hard stops: results no one should publish."""
+    """Hard stops: results no one should use."""
     w, h = size
     out = []
     K = np.asarray(K, float); D = np.asarray(D, float).ravel()

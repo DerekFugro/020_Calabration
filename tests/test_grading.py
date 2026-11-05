@@ -1,4 +1,4 @@
-"""test_grading.py — pass/fail grading (src/grading.py) and the store gate."""
+"""test_grading.py — pass/fail grading (src/grading.py)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 import yaml
 
-from src.calibration_store import StoreError, check_publishable
 from src.grading import coverage_counts, grade, ray_disagreement_mrad, sanity_problems
 from tests.test_coverage import _result, _spread_views, K, D, W, H
 
@@ -57,18 +56,6 @@ def test_coverage_counts():
 
 def _yaml(tmp_path, data):
     p = tmp_path / "c.yaml"; p.write_text(yaml.safe_dump(data)); return p
-
-
-def test_store_gate_uses_grade(tmp_path):
-    ok = _yaml(tmp_path, {"grade": {"passed": True, "headline": "PASS"}})
-    assert check_publishable(ok, passed=True) == "PASS"
-    bad = _yaml(tmp_path, {"grade": {"passed": False, "headline": "NOT PASSED",
-                                                             "reasons": ["Coverage: Top-left"]}})
-    with pytest.raises(StoreError, match="did not pass its grade"):
-        check_publishable(bad)
-    old = _yaml(tmp_path, {"verdict": "Excellent"})                         # no grade: refused
-    with pytest.raises(StoreError):
-        check_publishable(old)
 
 
 def test_pixel_error_alone_does_not_fail_but_few_points_does(monkeypatch):

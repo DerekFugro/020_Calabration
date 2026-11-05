@@ -67,8 +67,7 @@ class SetupScreen(QWidget):
         self.serial_input = QLineEdit()
         self.serial_input.setPlaceholderText("Required — from the camera label")
         self.serial_input.setFixedHeight(INPUT_H)
-        hint = QLabel("Fill in both every time.  Camera + serial name the result files "
-                      "and the file in the calibration store.")
+        hint = QLabel("Fill in both every time.  Camera + serial name the result files.")
         hint.setStyleSheet(dim); hint.setWordWrap(True)
         camera_group = QGroupBox("Camera")
         cl = QFormLayout(camera_group)
@@ -205,8 +204,9 @@ class SetupScreen(QWidget):
     @property
     def camera_role(self) -> str:
         """Normalised camera role (e.g. 'ROW'); '' if none chosen."""
-        from src.calibration_store import normalise_role
-        return normalise_role(self.role_combo.currentText())
+        import re
+        cleaned = re.sub(r"[\s_]+", "-", self.role_combo.currentText().strip()).upper()
+        return re.sub(r"-{2,}", "-", cleaned).strip("-")
 
     def set_busy(self, busy: bool) -> None:
         for w in (self.run_button, self.browse_button, self.role_combo, self.board_combo):

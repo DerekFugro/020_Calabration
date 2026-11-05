@@ -4,9 +4,7 @@ Filename convention:  CAL_<SerialNumber>_<YYYYMMDD_HHMMSS>[_N].<ext>
   where the optional _N suffix prevents overwriting an existing file.
 
 These files are the app's own working record, written next to the images.
-Publishing a calibration to the shared store
-(`H:\\001_Mahine_App_Specs\\Calibrations`, master doc §11) is a separate
-step — see src/calibration_store.py.
+They are written next to the images, and nowhere else.
 
 Public API
 ----------
@@ -84,8 +82,7 @@ def write_yaml(
     """Serialise calibration results to a YAML file.
 
     *role* is the camera's rig role (e.g. PAVE, ROW).  It is recorded in the
-    file and is what keys the calibration in the shared store; blank is allowed
-    for bench runs that are never published.
+    file; blank is allowed.
 
     Returns the path of the written file.
     """
@@ -469,8 +466,8 @@ def write_outputs(
 ) -> tuple[Path, Path]:
     """Write YAML + PDF with a shared timestamp.  Returns (yaml_path, pdf_path).
 
-    Pass *dt* when the caller also needs that datetime — publishing to the
-    calibration store must stamp the store file with the SAME datetime.
+    Pass *dt* when the caller also needs that datetime (the Calibration_<date>
+    folder is stamped with the same one).
     """
     dt = dt or datetime.now()
     yaml_path = write_yaml(cal_result, board_config, serial, image_folder, dt, role)
