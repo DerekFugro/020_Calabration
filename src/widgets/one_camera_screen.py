@@ -69,7 +69,10 @@ class OneCameraScreen(QWidget):
 
     def _show(self, run) -> None:
         self._run = run
-        self.report_screen.set_data(run.cal, run.board, run.folder)
+        from src.van_scan import camera_from_name, van_from_path
+        self.report_screen.set_data(run.cal, run.board, run.folder,
+                                    van=self.van or van_from_path(run.folder),
+                                    camera=camera_from_name(self._role) or self._role, serial=self._serial)
         self.stack.setCurrentWidget(self.report_screen)
 
     # Used by Load Extrinsic: the lens just calibrated here.

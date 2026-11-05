@@ -52,6 +52,14 @@ def van_from_path(path: str) -> str:
     return f"ARAN{int(m.group(1))}" if m else ""
 
 
+def van_from_computer() -> str:
+    """The van from this PC's name: ARAN69-SERVER / ARAN69-ROW -> ARAN69 ('' if none).
+    The app is installed on the van that is being calibrated (Derek, 2026-11-05)."""
+    import os
+    import socket
+    return van_from_path(os.environ.get("COMPUTERNAME") or socket.gethostname() or "")
+
+
 @dataclass
 class CameraFolder:
     folder: str

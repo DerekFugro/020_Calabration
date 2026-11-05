@@ -90,3 +90,22 @@ def test_scan_finds_camera_and_serial(tmp_path):
     assert [f.camera for f in found] == ["ForwardRight", "RearLeft"]
     assert found[0].serial == "101324" and found[0].van == "ARAN65" and found[0].filed_xml
     assert found[1].serial == "" and found[1].notes
+
+
+def test_van_from_computer(monkeypatch):
+    from src.van_scan import van_from_computer
+    for name, van in (("ARAN69-SERVER", "ARAN69"), ("ARAN69-ROW", "ARAN69"), ("aran 62-row", "ARAN62"), ("DESKTOP-12AB", "")):
+        monkeypatch.setenv("COMPUTERNAME", name)
+        assert van_from_computer() == van, name
+
+
+def test_photo_date_from_folder_name(tmp_path):
+    from datetime import datetime
+    from src.utils import FROM_FILES, FROM_FOLDER, date_from_path, photos_taken
+    assert date_from_path(r"F:\x\AK26\ARAN62_2026-04-04\Intrinsic\ROW") == datetime(2026, 4, 4)
+    assert date_from_path(r"F:\D\20260403_ARAN62_Surveyor_AK26\Intrinsic\FL") == datetime(2026, 4, 3)
+    assert date_from_path(r"F:\a\20261399_bad\b") is None and date_from_path(r"F:\a\b") is None
+    d = tmp_path / "20250619_ARAN54" / "ROW"; d.mkdir(parents=True)
+    assert photos_taken(str(d))[2] == FROM_FOLDER
+    e = tmp_path / "plain"; e.mkdir(); (e / "1.jpg").write_bytes(b"x")
+    assert photos_taken(str(e))[2] == FROM_FILES

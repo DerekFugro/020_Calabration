@@ -106,10 +106,12 @@ class ReportScreen(QWidget):
         self.grid_section_label = QLabel("Details")
         self.grid_frame         = QFrame()
         self.grid_cells = [[QLabel("—") for _ in range(3)] for _ in range(3)]
+        # "This lens" panel beside the squares: lens steady, sharpness, which camera, photos
         self.steady_box         = QLabel("")
-        self.steady_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.steady_box.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.steady_box.setWordWrap(True)
-        self.steady_box.setMinimumHeight(30)
+        self.steady_box.setTextFormat(Qt.TextFormat.RichText)
+        self._who = ("", "", "", "")      # van, camera, serial, image folder
         self.grid_legend        = QLabel(limits_text())
         self.grid_legend.setWordWrap(True)
         self.grid_advice        = QLabel("")
@@ -249,8 +251,10 @@ class ReportScreen(QWidget):
         self.main_layout.addWidget(self.title_label)
         self.main_layout.addWidget(self.folder_label)
         self.main_layout.addWidget(self.grade_banner)
-        self.main_layout.addWidget(self.grid_frame)          # compact: the details get the room
-        self.main_layout.addWidget(self.steady_box)
+        top = QHBoxLayout(); top.setSpacing(SPACING)
+        top.addWidget(self.grid_frame, 1)            # at least half the width
+        top.addWidget(self.steady_box, 1)
+        self.main_layout.addLayout(top)              # compact: the details get the room
         self.main_layout.addWidget(self.scroll_area, stretch=1)
         self.main_layout.addLayout(self.button_layout)
 
@@ -320,8 +324,12 @@ class ReportScreen(QWidget):
         cal_result: CalibrationResult,
         board_config: BoardConfig,
         image_folder: str = "",
+        van: str = "",
+        camera: str = "",
+        serial: str = "",
     ) -> None:
         """Called by MainWindow after calibration completes."""
+        self._who = (van, camera, serial, image_folder)
         from src.photo_folders import folder_lines
         self.folder_label.setText("\n".join(folder_lines(cal_result, image_folder)))
         self._update_summary(cal_result)
@@ -342,19 +350,7 @@ class ReportScreen(QWidget):
             return
         fg, bg = (C_GREEN, C_GREEN_BG) if g.passed else (C_RED, C_RED_BG)
         self.grade_banner.setText(getattr(g, "action", g.headline))
-        if hasattr(g, "steady"):
-            st, big, small = g.steady
-            fg, bg = {"good": (C_GREEN, C_GREEN_BG), "poor": (C_RED, C_RED_BG)}.get(st, (C_AMBER, C_AMBER_BG))
-            self.steady_box.setText(
-                f"<span style='font-size:8pt'>Lens steady (photos split in two at random, each half solved, 6 times):</span>&nbsp; "
-                f"<span style='font-size:12pt; font-weight:bold'>{big}</span>&nbsp;&nbsp;"
-                f"<span style='font-size:8pt'>{small}</span>")
-            self.steady_box.setStyleSheet(
-                f"background: rgb({bg[0]},{bg[1]},{bg[2]}); border: 1px solid rgb({fg[0]},{fg[1]},{fg[2]});"
-                f"color: rgb({fg[0]},{fg[1]},{fg[2]}); border-radius: 6px; padding: 4px;")
-            self.steady_box.show()
-        else:
-            self.steady_box.hide()
+        self._update_panel(cal_result, g)
         self.grade_banner.setStyleSheet(
             f"font-size: 13pt; font-weight: bold; padding: 5px; border-radius: 4px;"
             f"color: rgb({fg[0]},{fg[1]},{fg[2]}); background: rgb({bg[0]},{bg[1]},{bg[2]});"
@@ -385,6 +381,50 @@ class ReportScreen(QWidget):
             parts.append("<i>Saving still writes every file next to the photos.</i>")
         self.grade_details.setText("<br>".join(parts))
         self.grade_banner.show(); self.grade_details.show()
+
+    def _update_panel(self, cal_result, g) -> None:
+        """Beside the squares: the four things to check before Save, tick or warning each."""
+        import html
+        import math
+        from src.extrinsic.lens_check import date_range_text
+        from src.grading import blur_limits
+        from src.utils import FROM_FOLDER, photos_taken
+        ok, warn, bad = (C_GREEN, "&#10003;"), (C_AMBER, "&#9888;"), (C_RED, "&#10007;")
+
+        def row(state, title, value, note=""):
+            col, sym = state
+            return (f"<div style='margin:3px 0'><span style='color:rgb({col[0]},{col[1]},{col[2]}); "
+                    f"font-weight:bold'>{sym} {title}</span>&nbsp; {value}"
+                    + (f"<br><span style='font-size:8pt; color:rgb(150,150,150)'>{note}</span>" if note else "")
+                    + "</div>")
+        rows = []
+        st, big, small = g.steady if hasattr(g, "steady") else ("none", "-", "")
+        rows.append(row({"good": ok, "poor": bad}.get(st, warn), "Lens steady",
+                        f"<span style='font-size:12pt; font-weight:bold'>{html.escape(big)}</span>",
+                        html.escape(small)))
+        w, h = (tuple(cal_result.image_size) + (0, 0))[:2]
+        blur = getattr(g, "blur_median_px", math.nan)
+        if math.isnan(blur):
+            rows.append(row(warn, "Sharpness", "not measured"))
+        else:
+            soft, fail = blur_limits(int(w))
+            state, word = (ok, "sharp") if blur <= soft else ((warn, "soft") if blur <= fail else (bad, "too blurry"))
+            rows.append(row(state, "Sharpness", f"{blur:.1f} px, {word}",
+                            f"dot edge blur; soft above {soft:.1f} px, fails above {fail:.1f} px for this photo size"))
+        van, cam, serial, folder = self._who
+        missing = [n for n, v in (("van", van), ("camera", cam), ("serial", serial)) if not v]
+        rows.append(row(warn if missing else ok, "Camera",
+                        html.escape(f"{van or '? van'} · {cam or '? camera'} · serial {serial or '?'}"),
+                        ("Missing: " + ", ".join(missing) + ". These name the saved files.") if missing
+                        else "These name the saved files."))
+        f, l, how = photos_taken(folder) if folder else (None, None, "")
+        rows.append(row(ok if how == FROM_FOLDER else warn, "Photos",
+                        html.escape(f"{w} × {h} · taken {date_range_text(f, l)}"),
+                        html.escape(f"Date from the {how}." if how else "No date found.")))
+        self.steady_box.setText("".join(rows))
+        self.steady_box.setStyleSheet("background: rgb(36,36,36); border: 1px solid rgb(70,70,70); "
+                                      "border-radius: 5px; padding: 6px 10px; font-size: 9pt;")
+        self.steady_box.show()
 
     def _update_grid(self, cal_result: CalibrationResult, g=None) -> None:
         """Fill the 3x3 squares: what to do in each, then the numbers small."""

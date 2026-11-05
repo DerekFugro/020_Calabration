@@ -39,10 +39,11 @@ def from_run(run, serial: str) -> Intrinsic | None:
     if run is None or run.cal is None or g is None or getattr(run, "error", ""):
         return None
     K, D = run.cal.camera_matrix.copy(), run.cal.dist_coeffs.ravel()[:5].copy()
-    from src.utils import photo_dates
+    from src.utils import FROM_FOLDER, photos_taken
     w, h = (tuple(run.cal.image_size) + (0, 0))[:2] if getattr(run.cal, "image_size", None) is not None else (0, 0)
-    first, _last = photo_dates(run.folder)
-    extra = dict(width=int(w), height=int(h), date=first, date_what="Lens photos taken")
+    first, _last, how = photos_taken(run.folder)
+    extra = dict(width=int(w), height=int(h), date=first,
+                 date_what="Lens photos taken" if how == FROM_FOLDER else "Lens photo files dated (may be the copy date)")
     if g.passed:
         return Intrinsic(K, D, serial, f"Load Intrinsic this session: {run.folder} (PASS)", True, **extra)
     return Intrinsic(K, D, serial, f"Load Intrinsic this session: {run.folder} (NOT PASSED)", False,
@@ -66,10 +67,14 @@ def from_file(path: str) -> Intrinsic:
         D = np.array(d["dist_coeffs"]["data"], float).ravel()[:5]
         serial = str(d.get("serial_number", ""))
         res = d.get("image_resolution") or {}
-        taken = _when((d.get("photos_taken") or {}).get("first", ""))
+        pt = d.get("photos_taken") or {}
+        taken = _when(pt.get("first", ""))
+        from src.utils import FROM_FOLDER
+        what = ("Lens photos taken" if pt.get("from") == FROM_FOLDER
+                else "Lens photo files dated (may be the copy date)")
         extra = dict(width=int(res.get("width") or 0), height=int(res.get("height") or 0),
                      date=taken or _when(d.get("calibration_datetime", "")),
-                     date_what="Lens photos taken" if taken else "Lens worked out on")
+                     date_what=what if taken else "Lens worked out on")
         if g and g.get("passed") and not not_passed:
             return Intrinsic(K, D, serial, f"{path} (PASS)", True, **extra)
         if g:

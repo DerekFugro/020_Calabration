@@ -65,10 +65,10 @@ def _unique_path(folder: Path, stem: str, ext: str) -> Path:
 def _photos_taken(folder) -> dict:
     """First and last photo file time: when the lens photos were taken (for the
     extrinsic's same-visit check)."""
-    from src.utils import photo_dates
-    f, l = photo_dates(str(folder))
+    from src.utils import photos_taken
+    f, l, how = photos_taken(str(folder))
     return {"first": f.isoformat(timespec="seconds") if f else "",
-            "last": l.isoformat(timespec="seconds") if l else ""}
+            "last": l.isoformat(timespec="seconds") if l else "", "from": how}
 
 
 def write_yaml(

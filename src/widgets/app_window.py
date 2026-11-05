@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QTabWidget, QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QScrollArea, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from src.styles import STYLESHEET_MAIN
@@ -36,12 +36,16 @@ class AppWindow(QMainWindow):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Calibration")
-        self.resize(1250, 850)
+        # Never open bigger than the screen; a tab that needs more room scrolls instead.
+        from PySide6.QtGui import QGuiApplication
+        scr = QGuiApplication.primaryScreen()
+        a = scr.availableGeometry() if scr is not None else None
+        self.resize(min(1250, a.width() - 40) if a else 1250, min(850, a.height() - 60) if a else 850)
         self.setStyleSheet(STYLESHEET_MAIN)
         say = self.statusBar().showMessage
 
         # Van bar
-        self.van_edit = QLineEdit(); self.van_edit.setPlaceholderText("ARAN65")
+        self.van_edit = QLineEdit(); self.van_edit.setPlaceholderText("e.g. ARAN69")
         self.van_edit.setMaximumWidth(140)
         bar = QHBoxLayout()
         bar.addWidget(QLabel("Van:")); bar.addWidget(self.van_edit); bar.addStretch(1)
@@ -65,7 +69,9 @@ class AppWindow(QMainWindow):
             "The app runs the static setup: finds the targets in each photo "
             "itself instead of clicking.",
         ]), "Capture Extrinsic")
-        self.tabs.addTab(self.boards_tab, "Boards")
+        boards_scroll = QScrollArea(); boards_scroll.setWidgetResizable(True)
+        boards_scroll.setFrameShape(QFrame.Shape.NoFrame); boards_scroll.setWidget(self.boards_tab)
+        self.tabs.addTab(boards_scroll, "Boards")
 
         central = QWidget()
         lay = QVBoxLayout(central)
@@ -77,6 +83,10 @@ class AppWindow(QMainWindow):
             screen.status.connect(say)
         self.boards_tab.boards_changed.connect(self.single.setup_screen.reload_boards)
         self.van_edit.textChanged.connect(lambda t: setattr(self.single, "van", t.strip()))
+        # On the van, the PC name says which van it is (ARAN69-SERVER, ARAN69-ROW); shown so
+        # it can be corrected.
+        from src.van_scan import van_from_computer
+        self.van_edit.setText(van_from_computer())
 
     def _intrinsic_for(self, camera: str):
         """This session's passed Load Intrinsic result for this camera, or None."""
