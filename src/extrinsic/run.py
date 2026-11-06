@@ -38,6 +38,14 @@ OUTLIER_SETUP_DEG = 2.0     # a setup this far from the others (and 3x their med
 # 42 -> 32 mm (better on 27 cameras, worse on 2).  Forward/right and angles: no change, so
 # they still use every good setup.
 MIN_GROUND_FOR_HEIGHT = 3
+# Camera direction (pan / tilt / roll) comes only from strong setups - this many targets
+# AND this many tennis balls used - when at least MIN_SETUPS are strong (Derek, 2026-11-06).
+# Fleet 2026-11-05 (65 cameras): close-up setups with few targets and one ball can't pin the
+# tilt (ARAN62 ROW 2026-04-04: two such setups put the tilt 1-2 deg off the other five).
+# Changed only that camera's result (1.86 -> 0.96 deg spread, PASS); every other camera's
+# direction moved 0.07 deg median.  Weaker setups still count for forward/right.
+MIN_TARGETS_FOR_DIRECTION = 15
+MIN_BALLS_FOR_DIRECTION = 2
 
 
 # Normal pointing of each camera position (pan, + right of straight ahead).  Real
@@ -62,6 +70,7 @@ class SetupResult:
     problems: list = field(default_factory=list)
     ground_targets: int = 0                # tennis balls used in the solve
     counts_for_height: bool = False
+    counts_for_direction: bool = False
 
 
 @dataclass
@@ -224,7 +233,16 @@ def _combine(res: CameraResult, good: list) -> None:
         res.headline = "NOT PASSED: no setup could be solved."
         res.reasons.append("No usable setup.")
         return
-    Rs = [g.solve.R_bc for g in good]
+    strong = [g for g in good if getattr(g.solve, "n_points", 0) >= MIN_TARGETS_FOR_DIRECTION
+              and getattr(g, "ground_targets", 0) >= MIN_BALLS_FOR_DIRECTION]
+    dset = strong if len(strong) >= MIN_SETUPS else good
+    for g in dset:
+        g.counts_for_direction = True
+    if dset is not strong:
+        res.warnings.append(f"Camera direction from all setups: only {len(strong)} had {MIN_TARGETS_FOR_DIRECTION}+ "
+                            f"targets and {MIN_BALLS_FOR_DIRECTION}+ tennis balls (need {MIN_SETUPS}). Park so more "
+                            "targets and balls are in the picture; close-up setups give a weaker tilt.")
+    Rs = [g.solve.R_bc for g in dset]
     res.R_bc = rot_mean(Rs)
     res.pan_tilt_roll = pointing(res.R_bc)
     res.angle_spread_deg = max(rot_angle_deg(res.R_bc.T @ R) for R in Rs)

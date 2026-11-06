@@ -266,7 +266,10 @@ class ExtrinsicScreen(QWidget):
         for sr in res.setups:
             n = sr.solve.n_points if sr.solve else 0
             if sr.passed:
-                why = f"{n} targets, {sr.ground_targets} balls" + (" (height)" if sr.counts_for_height else "")
+                why = (f"{n} targets, {sr.ground_targets} balls"
+                       + (" (direction" + (", height)" if sr.counts_for_height else ")")
+                          if getattr(sr, "counts_for_direction", False)
+                          else (" (height)" if sr.counts_for_height else " (not for direction: weak)")))
             else:
                 main = [p for p in sr.problems if not p.startswith("target ")]
                 why = main[0] if main else "not used"

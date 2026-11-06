@@ -86,6 +86,7 @@ def setup_doc(sr, site, cam, run_id: str = "") -> dict:
         "match_note": (m.note or None) if m else None,
         "tennis_balls_used": sr.ground_targets,
         "counts_for_height": sr.counts_for_height,
+        "counts_for_direction": getattr(sr, "counts_for_direction", False),
         "solve": solve,
         "targets_in_view": len(m.predicted) if m else 0,
         "targets_found": len(found),

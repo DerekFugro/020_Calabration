@@ -127,6 +127,8 @@ def write_html(cam, site, data: dict, path: Path, serial: str, intrinsic=None, o
         sol = s.solve
         st = OK if s.passed else BAD
         why = "; ".join(p for p in s.problems if not p.startswith("target "))[:200]
+        if s.passed and not getattr(s, "counts_for_direction", True):
+            why = (why + "; " if why else "") + "used, but too few targets or balls to count for the direction"
         rows.append(f'<tr><td>{e(s.setup.name)}</td><td><span class="tag {st}">{"USED" if s.passed else "DROPPED"}</span></td>'
                     f'<td>{sol.n_points if sol else 0}</td><td>{f"{sol.loo_rms_mm:.1f}" if sol else "-"}</td>'
                     f'<td>{getattr(s, "ground_targets", 0)}{" &#10003;" if getattr(s, "counts_for_height", False) else ""}</td>'

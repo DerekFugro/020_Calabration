@@ -295,3 +295,23 @@ def test_target_files_record_every_target(tmp_path):
     assert t["1"]["used"] and t["1"]["miss_mm"] == 7.5 and t["1"]["kind"] == "wall disc"
     assert not t["2"]["found"] and t["2"]["predicted_x_px"] == 50.0
     assert t["50"]["kind"] == "tennis ball" and t["50"]["found_by"] == "second look" and "9 px" in t["50"]["dropped_why"]
+
+
+def test_direction_from_strong_setups():
+    """2026-11-06: direction from setups with 15+ targets and 2+ balls when 3+ such setups exist."""
+    from src.extrinsic.run import CameraResult, _combine
+    base = rot_zyx(0, -2, 0) @ np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0.0]])
+    def g(tilt, n, balls):
+        sol = SimpleNamespace(R_bc=rot_zyx(0, tilt, 0) @ base, lever_frd=np.array([-2.0, 0.0, 0]),
+                              up_ground_m=2.3, n_points=n)
+        return SimpleNamespace(solve=sol, passed=True, problems=[], ground_targets=balls)
+    # five strong setups agree; two weak close-ups 1.8 deg off (like ARAN62 ROW 2026-04-04)
+    good = [g(0.0, 28, 5), g(0.1, 24, 4), g(-0.1, 19, 2), g(0.05, 19, 3), g(-0.05, 41, 7), g(1.8, 16, 1), g(1.8, 11, 1)]
+    res = CameraResult(camera="ROW", van="X", folder="f")
+    _combine(res, good)
+    assert res.passed and res.angle_spread_deg < 0.2
+    assert [getattr(x, "counts_for_direction", False) for x in good] == [True] * 5 + [False, False]
+    few = [g(0.0, 28, 5), g(1.8, 11, 1), g(-1.8, 12, 0)]
+    res2 = CameraResult(camera="ROW", van="X", folder="f")
+    _combine(res2, few)
+    assert any("Camera direction from all setups" in w for w in res2.warnings)

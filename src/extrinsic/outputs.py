@@ -209,6 +209,7 @@ def summary(cam, serial: str, intrinsic_source: str) -> dict:
             "van_gps_status": s.setup.van.gps_status if s.setup.van else "",
             "true_to_grid_north_deg": round(s.solve.north_corr_deg, 3) if s.solve else None,
             "tennis_balls_used": s.ground_targets, "counts_for_height": s.counts_for_height,
+            "counts_for_direction": getattr(s, "counts_for_direction", False),
             "problems": s.problems,
         } for s in cam.setups],
         "notes": [EOP_NOTE, RWC_NOTE],
