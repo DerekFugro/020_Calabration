@@ -37,7 +37,7 @@ from src.board import (
     KIND_DOTS,
 )
 
-CAL_BOARD_DIR = Path(__file__).resolve().parent.parent / "Cal_board"
+from src.paths import CAL_BOARD_DIR  # noqa: E402  (repo Cal_board, or ProgramData when installed)
 BOARD_FILE = "board.yaml"
 
 

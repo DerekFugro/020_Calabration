@@ -1,5 +1,6 @@
 """main.py — Calibration application entry point."""
 
+import multiprocessing
 import sys
 
 from PySide6.QtWidgets import QApplication
@@ -11,6 +12,8 @@ APP_NAME = "Calibration"
 
 
 def main() -> int:
+    from src.paths import seed_data
+    seed_data()
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("SidewalkProfiler")
@@ -24,4 +27,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()  # needed for the detector's worker processes in the exe
     sys.exit(main())

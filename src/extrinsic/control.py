@@ -13,7 +13,7 @@ import numpy as np
 import yaml
 
 US_FT = 1200.0 / 3937.0
-SITES_DIR = Path(__file__).resolve().parent.parent.parent / "control"
+from src.paths import SITES_DIR  # noqa: E402  (repo control, or ProgramData when installed)
 
 
 @dataclass

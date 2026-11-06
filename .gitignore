@@ -3,3 +3,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 _backup_*/
+VERSION
+build/
+dist/
+installer/build/
+installer/dist/
+installer/Output/

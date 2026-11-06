@@ -1,0 +1,2 @@
+# only needed on the PC that builds Setup.exe:  uv pip install -r installer\requirements-build.txt
+pyinstaller>=6.10
