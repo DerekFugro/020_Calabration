@@ -79,7 +79,13 @@ class SetupScreen(QWidget):
         row.addWidget(QLabel("Serial number:"))
         row.addWidget(self.serial_input, 1)
         cl.addRow("Camera:", row)
+        # What the van's database says about this camera (src/camera_db.py, filled by OneCameraScreen)
+        self.db_label = QLabel("")
+        self.db_label.setWordWrap(True); self.db_label.setStyleSheet(dim)
+        self.db_label.setTextFormat(Qt.TextFormat.RichText)
+        cl.addRow(self.db_label)
         cl.addRow(hint)
+        self._db_serial = ""            # serial the database gave for the chosen camera
 
         self.board_combo = QComboBox()
         self.board_combo.setFixedHeight(INPUT_H)
@@ -206,6 +212,40 @@ class SetupScreen(QWidget):
         self.run_requested.emit(folder, self.serial_input.text().strip(), self._selected_board())
 
     # ── Used by the One camera screen ─────────────────────────────────────────
+    def apply_db(self, res, camera: str) -> None:
+        """Fill the serial from the van database (if empty or still the database's own value)
+        and say where it came from, or why it could not."""
+        import html as _h
+        row = res.find(camera) if (res is not None and camera) else None
+        typed = self.serial_input.text().strip()
+        if res is None:
+            self.db_label.setText(""); return
+        if row is None:
+            self._db_serial = ""
+            self.db_label.setText(_h.escape(res.error) if res.error else
+                                  f"{_h.escape(camera or 'This camera')} is not in the van {_h.escape(res.where)} "
+                                  f"(it lists {_h.escape(', '.join(c.camera for c in res.cameras.values()))}). Type the serial.")
+            self.db_label.setStyleSheet("color: rgb(150,150,150); font-size: 8pt;")
+            return
+        if not typed or typed == self._db_serial:
+            self.serial_input.setText(row.serial); typed = row.serial
+        self._db_serial = row.serial
+        size = f", photos {row.width} x {row.height}" if row.width else ""
+        if typed == row.serial:
+            self.db_label.setText(f"&#10003; Serial from the van {_h.escape(res.where)}{size}.")
+            self.db_label.setStyleSheet("color: rgb(60,200,60); font-size: 8pt;")
+        else:
+            self.db_label.setText(f"&#9888; You typed {_h.escape(typed)}, but the van {_h.escape(res.where)} says "
+                                  f"{_h.escape(row.serial)} for {_h.escape(row.camera)}{size}. Check the camera label.")
+            self.db_label.setStyleSheet("color: rgb(230,180,40); font-size: 8pt;")
+
+    @property
+    def serial_from(self) -> str:
+        typed = self.serial_input.text().strip()
+        if self._db_serial and typed == self._db_serial:
+            return "van database"
+        return "typed" + (f" (van database says {self._db_serial})" if self._db_serial else "")
+
     @property
     def camera_role(self) -> str:
         """Normalised camera role (e.g. 'ROW'); '' if none chosen."""

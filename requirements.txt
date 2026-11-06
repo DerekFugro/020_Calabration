@@ -4,3 +4,4 @@ fpdf2>=2.8.7
 pyyaml>=6.0
 pytest>=9.0.3
 pyproj>=3.6
+pyodbc>=5.0

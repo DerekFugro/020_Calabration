@@ -48,7 +48,10 @@ class AppWindow(QMainWindow):
         self.van_edit = QLineEdit(); self.van_edit.setPlaceholderText("e.g. ARAN69")
         self.van_edit.setMaximumWidth(140)
         bar = QHBoxLayout()
-        bar.addWidget(QLabel("Van:")); bar.addWidget(self.van_edit); bar.addStretch(1)
+        bar.addWidget(QLabel("Van:")); bar.addWidget(self.van_edit)
+        from PySide6.QtWidgets import QPushButton
+        db_btn = QPushButton("Database..."); db_btn.setToolTip("Where the van's ARAN database is (camera serials)")
+        bar.addWidget(db_btn); bar.addStretch(1)
 
         self.single = OneCameraScreen()
 
@@ -82,11 +85,18 @@ class AppWindow(QMainWindow):
         for screen in (self.single, self.extrinsic, self.boards_tab):
             screen.status.connect(say)
         self.boards_tab.boards_changed.connect(self.single.setup_screen.reload_boards)
-        self.van_edit.textChanged.connect(lambda t: setattr(self.single, "van", t.strip()))
+        self.van_edit.textChanged.connect(self.single.set_van)
+        self.van_edit.textChanged.connect(lambda t: setattr(self.extrinsic, "van", t.strip()))
+        db_btn.clicked.connect(self._database)
         # On the van, the PC name says which van it is (ARAN69-SERVER, ARAN69-ROW); shown so
         # it can be corrected.
         from src.van_scan import van_from_computer
         self.van_edit.setText(van_from_computer())
+
+    def _database(self):
+        from src.widgets.db_dialog import DbDialog
+        if DbDialog(self.van_edit.text(), self).exec():
+            self.single.set_van(self.van_edit.text())        # look the van up again with the new settings
 
     def _intrinsic_for(self, camera: str):
         """This session's passed Load Intrinsic result for this camera, or None."""

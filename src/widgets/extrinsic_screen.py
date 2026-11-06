@@ -55,6 +55,7 @@ class ExtrinsicScreen(QWidget):
         self._provider = intrinsic_provider or (lambda cam: None)
         self._cs = None            # CameraSetups
         self._intr = None          # Intrinsic
+        self.van = ""              # from the van bar
         self._res = None           # CameraResult
         self._worker = None
         from src.extrinsic.control import load_site
@@ -171,9 +172,23 @@ class ExtrinsicScreen(QWidget):
         got = self._provider(self._cs.camera)
         if got is not None:
             self._set_lens(got)
+        self._serial_from_db()
         self._lens_checks()
         self.status.emit(f"{self._cs.camera}: {len(self._cs.setups)} setups.")
         self._buttons()
+
+    def _serial_from_db(self):
+        """Serial for this camera from the van database, if the serial box is empty."""
+        if self._cs is None or self.serial.text().strip():
+            return
+        from src.camera_db import lookup_cached
+        res = lookup_cached(self.van or self._cs.van)
+        row = res.find(self._cs.camera)
+        if row is not None:
+            self.serial.setText(row.serial)
+            self.status.emit(f"Serial {row.serial} for {row.camera} from the van {res.where}.")
+        elif res.error:
+            self.status.emit(res.error[:200])
 
     def _pick_lens(self):
         p, _ = QFileDialog.getOpenFileName(self, "Lens file", self.folder.text(), "Lens (*.yaml *.yml *.xml)")
