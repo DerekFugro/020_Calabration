@@ -54,6 +54,7 @@ class ReportScreen(QWidget):
 
     save_requested                  = Signal()
     new_calibration_requested       = Signal()
+    check_requested                 = Signal()      # loaded result: process the photos again and compare
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -73,6 +74,11 @@ class ReportScreen(QWidget):
         self.folder_label.setWordWrap(True)
         self.folder_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.folder_label.setStyleSheet("color: rgb(170,170,170); font-size: 9pt;")
+        # Shown only for a loaded (already saved) calibration
+        self.loaded_label  = QLabel("")
+        self.loaded_label.setWordWrap(True)
+        self.loaded_label.setStyleSheet("color: rgb(230,180,40); font-size: 9pt;")
+        self.loaded_label.hide()
         self.grade_banner  = QLabel("")
         self.grade_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.grade_banner.setWordWrap(True)
@@ -161,6 +167,12 @@ class ReportScreen(QWidget):
         self.view_button = QPushButton("View photos...")
         self.view_button.setFixedHeight(BUTTON_H)
         self.view_button.clicked.connect(self._open_viewer)
+        self.check_button = QPushButton("Check by re-running")
+        self.check_button.setFixedHeight(BUTTON_H)
+        self.check_button.setToolTip("Process the photos again with this app (nothing in the folder changes) "
+                                     "and compare with the saved lens.")
+        self.check_button.clicked.connect(self.check_requested.emit)
+        self.check_button.hide()
 
         # ── Outlier panel (hidden until bad images found) ──────────────────
         self.outlier_group   = QGroupBox("Photos left out automatically")
@@ -246,6 +258,7 @@ class ReportScreen(QWidget):
         self.button_layout.setSpacing(SPACING)
         self.button_layout.addWidget(self.new_cal_button)
         self.button_layout.addWidget(self.view_button)
+        self.button_layout.addWidget(self.check_button)
         self.button_layout.addStretch()
         self.button_layout.addWidget(self.save_button)
 
@@ -255,6 +268,7 @@ class ReportScreen(QWidget):
         self.main_layout.setSpacing(SPACING)
         self.main_layout.addWidget(self.title_label)
         self.main_layout.addWidget(self.folder_label)
+        self.main_layout.addWidget(self.loaded_label)
         self.main_layout.addWidget(self.grade_banner)
         top = QHBoxLayout(); top.setSpacing(SPACING)
         top.addWidget(self.grid_frame, 1)            # at least half the width
@@ -386,6 +400,14 @@ class ReportScreen(QWidget):
             parts.append("<i>Saving still writes every file next to the photos.</i>")
         self.grade_details.setText("<br>".join(parts))
         self.grade_banner.show(); self.grade_details.show()
+
+    def set_loaded(self, note: str) -> None:
+        """A saved calibration was loaded (note) or a fresh run is shown ('')."""
+        self.loaded_label.setText(note)
+        self.loaded_label.setVisible(bool(note))
+        self.check_button.setVisible(bool(note))
+        self.check_button.setEnabled(True)
+        self.title_label.setText("Calibration Report (loaded)" if note else "Calibration Report")
 
     def _open_viewer(self) -> None:
         from src.viewer import open_viewer

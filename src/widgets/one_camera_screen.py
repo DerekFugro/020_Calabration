@@ -44,6 +44,7 @@ class OneCameraScreen(QWidget):
         self.setup_screen.run_requested.connect(self._on_run_requested)
         self.report_screen.save_requested.connect(self._save)
         self.report_screen.new_calibration_requested.connect(self._back_to_setup)
+        self.report_screen.check_requested.connect(self._check)
 
     # ── Run ───────────────────────────────────────────────────────────────────
     def _on_run_requested(self, folder: str, serial: str, board) -> None:
@@ -80,6 +81,7 @@ class OneCameraScreen(QWidget):
     def _show(self, run) -> None:
         self._run = run
         from src.van_scan import camera_from_name, van_from_path
+        self.report_screen.set_loaded(getattr(run, "loaded_note", ""))
         self.report_screen.set_data(run.cal, run.board, run.folder,
                                     van=self.van or van_from_path(run.folder),
                                     camera=camera_from_name(self._role) or self._role, serial=self._serial)
@@ -118,6 +120,7 @@ class OneCameraScreen(QWidget):
         box.setText(f"This folder was already calibrated:\n{last.text()}{more}")
         box.setInformativeText("Open the saved results, or process the photos again?")
         open_btn = box.addButton("Open results", QMessageBox.ButtonRole.AcceptRole)
+        pdf_btn = box.addButton("Open PDF", QMessageBox.ButtonRole.ActionRole)
         redo_btn = box.addButton("Reprocess", QMessageBox.ButtonRole.DestructiveRole)
         box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(open_btn)
@@ -125,10 +128,51 @@ class OneCameraScreen(QWidget):
         if box.clickedButton() is redo_btn:
             return True
         if box.clickedButton() is open_btn:
+            self._load_previous(last.yaml_path)
+            return False
+        if box.clickedButton() is pdf_btn:
             target = last.pdf_path or last.yaml_path
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
             self.status.emit(f"Opened {target.name}")
         return False
+
+    # ── Loaded results: check each other's work ────────────────────────────
+    def _load_previous(self, yaml_path) -> None:
+        """Show a saved calibration in the report, as if it had just been processed."""
+        from src.load_saved import load_saved
+        try:
+            run = load_saved(yaml_path)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Open results", f"Could not load {Path(yaml_path).name}:\n{exc}")
+            return
+        self._role, self._serial = run.saved_role, run.saved_serial
+        self._show(run)
+        self.status.emit(f"Loaded {Path(yaml_path).name} - Check by re-running compares it with today's app.")
+
+    def _check(self) -> None:
+        run = self._run
+        if run is None or not getattr(run, "loaded_from", ""):
+            return
+        from src.workers import FolderWorker
+        self.report_screen.check_button.setEnabled(False)
+        self._check_worker = FolderWorker(run.folder, run.board, parent=self, change_folder=False)
+        self._check_worker.progress.connect(lambda m: self.status.emit(f"Check: {m}"))
+        self._check_worker.done.connect(self._check_done)
+        self._check_worker.start()
+        self.status.emit("Checking: processing the photos again (nothing in the folder changes)...")
+
+    def _check_done(self, new_run) -> None:
+        from src.load_saved import compare, record_check
+        self.report_screen.check_button.setEnabled(True)
+        agrees, text = compare(self._run, new_run)
+        if getattr(self._run, "run_log", ""):
+            try:
+                record_check(self._run.run_log, agrees, text)
+                text += f"\n\nRecorded in {Path(self._run.run_log).name}."
+            except Exception:  # noqa: BLE001
+                pass
+        (QMessageBox.information if agrees else QMessageBox.warning)(self, "Check by re-running", text)
+        self.status.emit(text.splitlines()[0])
 
     # ── Save ──────────────────────────────────────────────────────────────────
     def _save(self) -> None:
