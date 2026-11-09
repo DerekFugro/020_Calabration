@@ -31,10 +31,17 @@ folder. The 020_Calabration app then grades/calibrates that folder. State
 ## Reference material — what's authoritative, what to skip
 - **Magewell MWCaptureSDK 3.3.1.1596 — "Pro Capture Series Card Software
   Development Guide" (SDK v3, 18 pages)** → AUTHORITATIVE for the Magewell Pro
-  Capture cards (DirectShow extension interface, LibMWCapture functions, channel
-  terms, multi-streaming). Location on DPDEV:
-  `D:\Manuals\Need to be converted\Magewell MWCaptureSDK 3.3.1.1596 SDKv3\Developer's Guide.pdf`.
-  Key facts already taken from it are in Capture_Instructions.md / Phase 7.
+  Capture cards (DirectShow extension interface `IMWCaptureExtension`, LibMWCapture
+  functions, channel terms, multi-streaming). Read THIS cleaned copy on DPDEV:
+  `D:\Manuals\Need to be converted\Magewell MWCaptureSDK 3.3.1.1596 SDKv3\MageWellDeveloper's Guide.clean.md`
+  (~23 KB), paired with `MageWellDeveloper's Guide.clean.toc.md` (heading index,
+  exact line numbers). Cleaned 2026-11-09 from the `.standard.md` conversion:
+  headings re-levelled, split tables joined, vendor wording and typos kept (e.g.
+  `MWGetFamliyInfoByIndex` — check names against `MWCapture.h`). Key facts already
+  taken from it are in Capture_Instructions.md / Phase 7. Note section 2.2: the
+  DirectShow extension itself offers `GetVideoSignalStatus` and
+  `GetDeviceInstanceID`, so signal status may not need LibMWCapture.dll — check
+  in the Phase 1 bench test.
   - Same folder, `...SDKv2\Developer's Guide.pdf` and `...SDKv2\html\` = older SDK v2
     guide + Doxygen API reference (types/functions). Use the html reference only for
     exact function signatures in Phase 7.
@@ -45,6 +52,8 @@ folder. The 020_Calabration app then grades/calibrates that folder. State
 - **JAI Spark SP-45001-CXP2A datasheet** → `D:\Manuals\rag\Datasheet_SP-45001-CXP2A.rag.md`
   (~10 KB). Phase 9 only.
 - IGNORE: the raw PDFs in `D:\Manuals\pdf\` (the `.rag.md` copies hold the text);
+  the Magewell `MageWellDeveloper's Guide.pdf`, `.standard.md` and `.docx` (the
+  `.clean.md` holds the same text);
   `D:\Manuals\standard\*.standard.md` (duplicates of the rag files); the
   POS LV / POSPac manuals in `D:\Manuals\Need to be converted` (not relevant);
   `ForClaude/` in the repo (personal notes).
@@ -64,11 +73,11 @@ including its YAML frontmatter, and are exact — a heading listed at `L522` is 
 line 522.
 
 ## Known reference gaps
-- **Magewell guide is PDF only** (not yet converted to `.rag.md`/`.toc.md`). It is
-  short (18 pages) and has been read; Phase 1–5 do not depend on details beyond
-  what the Instructions state. Phase 7 (ctypes on LibMWCapture) needs exact
-  signatures from the SDK v2 html reference or the SDK headers on ARAN99 — mark
-  that work "needs human verification".
+- **Magewell guide is not in the RAG library format yet** (no doc_id/chunks). The
+  cleaned `.clean.md` + `.clean.toc.md` are complete and usable as is. Phase 7
+  (ctypes on LibMWCapture) needs exact signatures from the separate "Software
+  Development Manual" (SDK v2 html reference, not converted) or the SDK headers
+  on ARAN99 — mark that work "needs human verification".
 - **Whether two programs can open one Magewell input at once** is not stated in
   the guide (it says one channel can output multiple streams). Phase 1 bench test
   answers it on ARAN99; until then assume "first connect wins".
