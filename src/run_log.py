@@ -81,7 +81,7 @@ def write_run_log(run, run_id: str, started: datetime, inputs: dict | None, erro
         }
     doc = {
         "run_id": run_id,
-        "what": "One Load Intrinsic run of this folder (020_Calabration). Never overwritten.",
+        "what": "One Load Intrinsic run of this folder (SurveyorCalibration). Never overwritten.",
         "app_version": app_version(),
         "pc": {"computer": os.environ.get("COMPUTERNAME") or socket.gethostname(),
                "user": os.environ.get("USERNAME") or os.environ.get("USER", ""),

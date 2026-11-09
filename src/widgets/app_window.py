@@ -35,7 +35,7 @@ def _planned(title: str, lines: list[str]) -> QWidget:
 class AppWindow(QMainWindow):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Calibration")
+        self.setWindowTitle("SurveyorCalibration")
         # Never open bigger than the screen; a tab that needs more room scrolls instead.
         from PySide6.QtGui import QGuiApplication
         scr = QGuiApplication.primaryScreen()

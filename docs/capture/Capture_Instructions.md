@@ -1,4 +1,4 @@
-# Instructions for Capture (020_Calabration photo collection program)
+# Instructions for SurveyorCapture (SurveyorCalibration photo collection program)
 
 > This spec is self-contained. The coding agent may have no prior context — every
 > rule here is explicit. Default to the strongest model tier (currently Claude
@@ -10,12 +10,13 @@
 > Read `docs/capture/CONTEXT.md` first.
 
 ## ⭐ Project name:
-**Capture** — the photo collection program of the 020_Calabration app.
-Code folder `src/capture`, exe `020_Capture.exe`, window title "020 Capture".
+**SurveyorCapture** — the photo collection program of the SurveyorCalibration app
+(called 020_Calabration until 2026-11-09; the repo and code folder keep that name).
+Code folder `src/capture`, exe `SurveyorCapture.exe`, window title "SurveyorCapture".
 
 ## ⭐ Purpose:
 Show live video from one van camera and save full-size calibration photos into a
-folder, so the 020_Calabration app can grade and calibrate them.
+folder, so the SurveyorCalibration app can grade and calibrate them.
 
 ## ⭐ Problem it solves:
 Today calibration photos are grabbed with a camera vendor tool, then copied and
@@ -55,7 +56,7 @@ Version 1 (Phases 1–5) has exactly these features:
 
 ## ⭐ Success criteria:
 - On a van (ARAN69-SERVER, or ARAN99 for bench work): pick ROW from the database
-  list, grab 30+ board photos, open that folder in the 020_Calabration app, and the
+  list, grab 30+ board photos, open that folder in the SurveyorCalibration app, and the
   lens grades PASS with every photo at the camera's full native size
   (3840×2160 for a 4K camera, 1920×1080 for an HD camera — whatever the camera is).
 - Works the same with a 1920×1080 camera (e.g. RearLeft) as with a 3840×2160 one.
@@ -91,14 +92,14 @@ grab key) live behind an "Advanced…" button.
 3. *Busy camera.* If ARAN is collecting, I'm told plainly and nothing breaks.
    Accept: busy message; "Try again" works once ARAN releases it.
 4. *Hand over to calibration.* I press "Open in calibration app" and the
-   020_Calabration app opens with that folder. Accept: the folder path is passed on
+   SurveyorCalibration app opens with that folder. Accept: the folder path is passed on
    the command line; no other link between the programs.
 5. *Find out later what happened.* Months later anyone can read the log and know
    which camera, port, serial, size, PC, app version and time each photo came from.
 
 ## ⭐ App type:
 GUI desktop (PySide6), Windows. A separate program (own process, own exe) that
-ships in the same installer as the 020_Calabration app.
+ships in the same installer as the SurveyorCalibration app.
 
 ## ⭐ Platform standards to follow:
 - Read `docs/capture/standards/gui-coding-standards.md` and
@@ -124,7 +125,7 @@ One main window, `CaptureWindow` (`src/capture/window.py`):
   button (shows 3-2-1 big over the preview), last-photo thumbnail strip,
   "Open in calibration app", "Advanced…".
 - Status line for plain-English messages.
-Command line: `020_Capture.exe [--van ARAN69] [--camera ROW] [--folder <path>]`.
+Command line: `SurveyorCapture.exe [--van ARAN69] [--camera ROW] [--folder <path>]`.
 From source: `uv run python -m src.capture`.
 The calibration app gets one button, "Collect photos…", that starts Capture as a
 separate process (`QProcess.startDetached`); nothing else changes in the app.
@@ -146,7 +147,7 @@ None. Anyone signed in to the van PC can use it. No admin rights needed to run.
   `delivered_size`, `started`, and `photos`: list of
   `{file, time, width, height, countdown: bool}`.
 - Settings (last folder, last van, JPEG quality, countdown seconds, grab key):
-  `QSettings("SidewalkProfiler", "020_Capture")`. No passwords stored by Capture —
+  `QSettings("SidewalkProfiler", "SurveyorCapture")`. No passwords stored by Capture —
   the database password, if any, stays in `src/camera_db.py`'s Windows-DPAPI store.
 - Serials are text everywhere. Never convert to int.
 
@@ -169,7 +170,7 @@ None. Anyone signed in to the van PC can use it. No admin rights needed to run.
 - No secrets in code or repo. There is no `.env` in this project: the only secret
   (optional SQL password) is stored per user per PC with Windows DPAPI by camera_db.
 - Errors shown to the crew in plain English; full details (traceback) go to the
-  log file `%LOCALAPPDATA%\020_Calabration\capture_errors.log` (append, rotate at
+  log file `%LOCALAPPDATA%\SurveyorCalibration\capture_errors.log` (append, rotate at
   5 MB). Never show or log a password or connection string with a password.
 
 ## ⭐ Integrations:
@@ -192,8 +193,8 @@ None. Anyone signed in to the van PC can use it. No admin rights needed to run.
   `port` field to it and to its existing SELECT (the only allowed change to
   camera_db; keep its tests passing). `VideoModuleName` says which PC holds the
   card (e.g. `ARAN69-Server`); show a warning if it isn't this PC.
-- **020_Calabration app**: only through the photo folder and one launch button each
-  way ("Collect photos…" → Capture; "Open in calibration app" → `020_Calabration.exe
+- **SurveyorCalibration app**: only through the photo folder and one launch button each
+  way ("Collect photos…" → Capture; "Open in calibration app" → `SurveyorCalibration.exe
   --folder <path>` or `uv run python main.py --folder <path>`; add that small
   `--folder` option to `main.py` if missing).
 - **Allowed shared imports (one way only):** Capture may import ONLY these
@@ -226,8 +227,8 @@ push. Commit trailers as instructed by the session. Preserve existing line endin
 | numpy | 2.x (already installed) | frames |
 | pyodbc | 5.4.0 | via `src/camera_db.py` only |
 | comtypes | 1.4.x (NEW; verify latest at setup) | list DirectShow video input names in enumeration order (own ~50-line helper `src/capture/dshow_names.py`; MIT licence) |
-| PyInstaller | 6.x | second exe `020_Capture.exe` in the same build |
-| Inno Setup | 6.7.3 | same Setup.exe, adds a Start-menu entry "020 Capture" |
+| PyInstaller | 6.x | second exe `SurveyorCapture.exe` in the same build |
+| Inno Setup | 6.7.3 | same Setup.exe, adds a Start-menu entry "SurveyorCapture" |
 | pytest | 9.0.3 | tests with a fake camera |
 Rejected: cv2-enumerate-cameras (GPL v3 — not for a company installer),
 pygrabber (last release Oct 2023), Qt Multimedia `QCamera` (Media Foundation;

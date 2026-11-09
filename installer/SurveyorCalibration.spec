@@ -1,4 +1,4 @@
-# PyInstaller spec - builds dist\020_Calabration\020_Calabration.exe (one folder, no Python needed).
+# PyInstaller spec - builds dist\SurveyorCalibration\SurveyorCalibration.exe (one folder, no Python needed).
 # Run through installer\build.ps1, which writes VERSION first.
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files
@@ -21,6 +21,6 @@ a = Analysis(
     noarchive=False,
 )
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="020_Calabration",
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="SurveyorCalibration",
           console=False, upx=False)
-coll = COLLECT(exe, a.binaries, a.datas, upx=False, name="020_Calabration")
+coll = COLLECT(exe, a.binaries, a.datas, upx=False, name="SurveyorCalibration")

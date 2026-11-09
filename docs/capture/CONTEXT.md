@@ -1,4 +1,4 @@
-# Project Context — Capture (020_Calabration photo collection program)
+# Project Context — SurveyorCapture (SurveyorCalibration photo collection program)
 
 > Orientation file for any agent (or human) working on Capture. Read this first.
 > Keep it current: one line per reference file is enough.
@@ -6,7 +6,7 @@
 ## What this is
 Capture is a separate Windows program (own process, own exe) that shows live video
 from one van camera and saves full-size calibration photos plus a capture log into a
-folder. The 020_Calabration app then grades/calibrates that folder. State
+folder. The SurveyorCalibration app then grades/calibrates that folder. State
 (2026-11-08): spec written, no Capture code yet.
 
 ## How to read this project

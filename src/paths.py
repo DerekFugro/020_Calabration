@@ -1,7 +1,7 @@
 """paths.py - where the app's own data lives (board library, Old School sites).
 
 From the code folder (uv run): the repo's Cal_board and control folders, as before.
-Installed (PyInstaller exe): C:\\ProgramData\\020_Calabration\\Cal_board and \\control,
+Installed (PyInstaller exe): C:\\ProgramData\\SurveyorCalibration\\Cal_board and \\control,
 one shared copy for everyone on that PC.  The installer copies the boards and sites
 that ship with the app there; seed_data() does the same at start-up in case it was
 missed.  Files already there are never overwritten or deleted.
@@ -14,7 +14,8 @@ import shutil
 import sys
 from pathlib import Path
 
-APP_NAME = "020_Calabration"
+APP_NAME = "SurveyorCalibration"
+OLD_APP_NAME = "020_Calabration"   # name before 2026-11-09; its folders are copied once
 FROZEN = bool(getattr(sys, "frozen", False))
 
 # where the code and the bundled files are (the repo, or the exe's _internal folder)
@@ -27,6 +28,38 @@ else:
 
 CAL_BOARD_DIR = DATA_DIR / "Cal_board"
 SITES_DIR = DATA_DIR / "control"
+
+
+def copy_missing(old: Path, new: Path) -> list[Path]:
+    """Copy files from an old folder that are missing in the new one.  Never overwrites,
+    never deletes the old folder.  Problems are ignored."""
+    copied: list[Path] = []
+    if not old.is_dir() or old.resolve() == new.resolve():
+        return copied
+    for f in old.rglob("*"):
+        if not f.is_file():
+            continue
+        dst = new / f.relative_to(old)
+        if dst.exists():
+            continue
+        try:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, dst)
+            copied.append(dst)
+        except OSError:
+            pass
+    return copied
+
+
+def migrate_old_name() -> list[Path]:
+    """The app was called 020_Calabration.  Bring its per-user settings (van database
+    settings, protected password) and, when installed, its shared boards/sites across."""
+    local = Path(os.environ.get("LOCALAPPDATA") or Path.home())
+    copied = copy_missing(local / OLD_APP_NAME, local / APP_NAME)
+    if FROZEN:
+        common = Path(os.environ.get("PROGRAMDATA") or r"C:\ProgramData")
+        copied += copy_missing(common / OLD_APP_NAME, DATA_DIR)
+    return copied
 
 
 def seed_data() -> list[Path]:

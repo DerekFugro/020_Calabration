@@ -9,7 +9,7 @@ Login: Windows sign-in (dev PC), or a SQL login.  A SQL password is never in the
 or the repo: it is kept in Windows' protected store (DPAPI) in the settings folder, so
 only this Windows user on this PC can read it back.
 
-Settings (all optional) in %LOCALAPPDATA%\\020_Calabration\\camera_db.json:
+Settings (all optional) in %LOCALAPPDATA%\\SurveyorCalibration\\camera_db.json:
   {"server": "", "database": "", "auth": "windows" | "sql", "user": ""}
 Blank server -> <VAN>-SERVER, then this PC.  Blank database -> the van name.
 """
@@ -24,7 +24,7 @@ from ctypes import wintypes
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SETTINGS_DIR = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "020_Calabration"
+SETTINGS_DIR = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "SurveyorCalibration"
 SETTINGS = SETTINGS_DIR / "camera_db.json"
 SECRET = SETTINGS_DIR / "camera_db.secret"
 TIMEOUT_S = 4
@@ -86,7 +86,7 @@ def _dpapi(data: bytes, protect: bool) -> bytes:
     out = _Blob()
     fn = ctypes.windll.crypt32.CryptProtectData if protect else ctypes.windll.crypt32.CryptUnprotectData
     if protect:
-        ok = fn(ctypes.byref(src), "020_Calabration", None, None, None, 0, ctypes.byref(out))
+        ok = fn(ctypes.byref(src), "SurveyorCalibration", None, None, None, 0, ctypes.byref(out))
     else:
         ok = fn(ctypes.byref(src), None, None, None, None, 0, ctypes.byref(out))
     if not ok:

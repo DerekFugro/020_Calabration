@@ -1,4 +1,4 @@
-# Implementation Plan for Capture (020_Calabration photo collection program)
+# Implementation Plan for SurveyorCapture (SurveyorCalibration photo collection program)
 
 > Gated phases. After each phase, run the full test suite, report results, and
 > wait for "proceed". Do not advance if any test fails. Each phase must leave the
@@ -80,7 +80,7 @@ Magewell PC before any GUI is written.
    safe write.
 5. `src/capture/capture_log.py`: `CAPTURE_<date>_<time>.json`, atomic rewrite after
    each grab, fields as in the Instructions; serials kept as text.
-6. `src/capture/errors.py`: append to `%LOCALAPPDATA%\020_Calabration\capture_errors.log`,
+6. `src/capture/errors.py`: append to `%LOCALAPPDATA%\SurveyorCalibration\capture_errors.log`,
    rotate at 5 MB, never log passwords.
 7. Tests (all with `FakeSource`): list sources incl. the ARAN66 sample XML
    (copy only its four `VideoDeviceConfig-*` blocks into
@@ -119,7 +119,7 @@ Magewell PC before any GUI is written.
 3. Grab three ways: Grab button, Space bar (configurable in Advanced), Countdown
    (3 s default, big 3-2-1 overlay). Disable Grab while saving; show count and
    last thumbnail.
-4. Save folder picker (remembered in QSettings `SidewalkProfiler/020_Capture`).
+4. Save folder picker (remembered in QSettings `SidewalkProfiler/SurveyorCapture`).
    If no folder is chosen, Grab asks for one first.
 5. Busy/no-signal message + "Try again". Warning if `VideoModuleName` ≠ this PC.
 6. "Advanced…" dialog: JPEG quality (80–100, default 95), countdown seconds
@@ -150,14 +150,14 @@ Magewell PC before any GUI is written.
 ### Tasks
 1. Calibration app: one "Collect photos…" button (in the app window's top bar)
    that starts Capture with `QProcess.startDetached` (source run: same Python with
-   `-m src.capture`; installed: `020_Capture.exe` next to `020_Calabration.exe`),
+   `-m src.capture`; installed: `SurveyorCapture.exe` next to `SurveyorCalibration.exe`),
    passing `--van`. It must not import `src.capture`.
 2. `main.py`: add `--folder <path>` to open the calibration app on a folder (if
    missing). Capture's "Open in calibration app" uses it.
-3. `installer/020_Calabration.spec`: add a second Analysis/EXE for
-   `src/capture/__main__.py` named `020_Capture`, sharing the same COLLECT folder
+3. `installer/SurveyorCalibration.spec`: add a second Analysis/EXE for
+   `src/capture/__main__.py` named `SurveyorCapture`, sharing the same COLLECT folder
    (MERGE or one COLLECT with both EXEs) so libraries aren't duplicated.
-4. `installer/020_Calabration.iss`: Start-menu entry "020 Capture"; optional desktop
+4. `installer/SurveyorCalibration.iss`: Start-menu entry "SurveyorCapture"; optional desktop
    icon.
 5. Build with `installer\build.ps1 -Test`; install on DPDEV; both exes start;
    buttons launch each other.

@@ -8,11 +8,12 @@ from PySide6.QtWidgets import QApplication
 from src.styles import build_dark_palette
 from src.widgets.app_window import AppWindow
 
-APP_NAME = "Calibration"
+APP_NAME = "SurveyorCalibration"
 
 
 def main() -> int:
-    from src.paths import seed_data
+    from src.paths import migrate_old_name, seed_data
+    migrate_old_name()
     seed_data()
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
