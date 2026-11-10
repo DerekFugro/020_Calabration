@@ -223,9 +223,11 @@ def _os_setups(tmp_path, w=1920, h=1080, names=("20260404.102502", "20260404.120
 def test_lens_checks_all_good(tmp_path):
     from datetime import datetime
     from src.extrinsic.lens_check import OK, lens_checks
-    cks = lens_checks(_intr(when=datetime(2026, 4, 3, 9, 0)), _os_setups(tmp_path), "ForwardLeft", _db("2000713"))
+    cks = lens_checks(_intr(when=datetime(2026, 4, 3, 9, 0)), _os_setups(tmp_path), "ForwardLeft", "2000713",
+                      "ForwardLeft")
     assert all(s == OK for s, _, _ in cks), cks
-    assert any(t == "The van database agrees" for _, t, _ in cks)
+    titles = [t for _, t, _ in cks]
+    assert "The lens is for this camera" in titles and "The Old School folder is for this camera" in titles
     dates = [d for s, t, d in cks if "same visit" in t][0]
     assert "Fri 3 Apr 2026" in dates and "Sat 4 Apr 2026" in dates and "1 day apart" in dates
 
@@ -234,11 +236,10 @@ def test_lens_checks_warn_in_plain_words(tmp_path):
     from datetime import datetime
     from src.extrinsic.lens_check import WARN, lens_checks, warnings_text
     cks = lens_checks(_intr(serial="2000211", w=3840, h=2160, when=datetime(2026, 2, 18), passed=False),
-                      _os_setups(tmp_path), "ForwardLeft", _db("2000713"))
+                      _os_setups(tmp_path), "ForwardLeft", "2000713", "ForwardLeft")
     warn = {t: d for s, t, d in cks if s == WARN}
-    assert "The lens is for a different serial than the van has" in warn
-    assert "2000211" in warn["The lens is for a different serial than the van has"]
-    assert "2000713" in warn["The lens is for a different serial than the van has"]
+    assert "The lens is for a different serial" in warn
+    assert "2000211" in warn["The lens is for a different serial"] and "2000713" in warn["The lens is for a different serial"]
     size = warn["The lens file is for a different photo size"]
     assert "1920 × 1080" in size and "3840 × 2160" in size
     visit = warn["The lens is from a different visit"]
@@ -247,38 +248,27 @@ def test_lens_checks_warn_in_plain_words(tmp_path):
     assert len(warnings_text(cks)) == 4
 
 
-def _db(serial, camera="ForwardLeft", error=""):
-    from src.camera_db import CameraRow, DbResult
-    cams = {} if error else {camera.upper(): CameraRow(camera, serial, 1920, 1080)}
-    return DbResult(cameras=cams, server="ARAN62-SERVER", database="ARAN62", error=error)
-
-
 def test_lens_checks_missing_info(tmp_path):
     from src.extrinsic.lens_check import WARN, lens_checks
-    cks = lens_checks(_intr(serial="", when=None), _os_setups(tmp_path), "ForwardLeft")
+    cks = lens_checks(_intr(serial="", when=None), _os_setups(tmp_path), "ForwardLeft", "2000713", "ForwardLeft")
     titles = [t for s, t, _ in cks if s == WARN]
     assert "The lens file has no serial number" in titles and "The lens file has no date" in titles
-    cks = lens_checks(_intr(camera=""), _os_setups(tmp_path), "")
-    assert any(t == "Nobody says which camera this is" for _, t, _ in cks)
+    cks = lens_checks(_intr(), _os_setups(tmp_path), "", "", "ForwardLeft")
+    assert any(t == "Pick the camera and serial at the top" for _, t, _ in cks)
 
 
-def test_camera_and_serial_come_from_the_lens(tmp_path):
-    """2026-11-10: the lens names the camera; the folder and the van database check it."""
-    from src.extrinsic.lens_check import OK, WARN, camera_used, lens_checks
+def test_camera_and_serial_from_the_top_bar(tmp_path):
+    """2026-11-10: the top bar names the camera and serial; the lens and the folder must agree."""
+    from src.extrinsic.lens_check import OK, WARN, lens_checks
     st = _os_setups(tmp_path)
-    assert camera_used(_intr(camera="ROW"), "ForwardLeft") == "ROW"
-    assert camera_used(_intr(camera=""), "ForwardLeft") == "ForwardLeft"
-    warn = {t: d for s, t, d in lens_checks(_intr(camera="ROW"), st, "ForwardLeft") if s == WARN}
-    assert "The lens is for a different camera than the folder" in warn
-    assert "ROW" in warn["The lens is for a different camera than the folder"]
-    warn = {t: d for s, t, d in lens_checks(_intr(), st, "") if s == WARN}
+    warn = {t: d for s, t, d in lens_checks(_intr(camera="ROW"), st, "ForwardLeft", "2000713", "ForwardLeft") if s == WARN}
+    assert "The lens is for a different camera" in warn and "ROW" in warn["The lens is for a different camera"]
+    warn = {t: d for s, t, d in lens_checks(_intr(), st, "ForwardLeft", "2000713", "ROW") if s == WARN}
+    assert "The Old School folder is for a different camera" in warn
+    warn = {t: d for s, t, d in lens_checks(_intr(), st, "ForwardLeft", "2000713", "") if s == WARN}
     assert "The folder name doesn't say which camera this is" in warn
-    # van database can't be read, or doesn't have the camera
-    titles = [t for _, t, _ in lens_checks(_intr(), st, "ForwardLeft", _db("", error="SQL Server not reachable"))]
-    assert not any("van database" in t or "van has" in t for t in titles)
-    states = {t: s for s, t, _ in lens_checks(_intr(), st, "ForwardLeft", _db("2000713", camera="ROW"))}
-    assert states["The van database has no enabled ForwardLeft camera"] == WARN
-    assert states["The lens is for this camera"] == OK
+    states = {t: s for s, t, _ in lens_checks(_intr(camera=""), st, "ForwardLeft", "2000713", "ForwardLeft")}
+    assert states["The lens is for this camera"] == OK            # old lens file: serial still checked
 
 
 def test_lens_files_record_the_camera(tmp_path):

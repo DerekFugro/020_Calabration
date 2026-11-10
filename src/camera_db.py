@@ -8,20 +8,17 @@ ForwardLeft, ...), CameraSerialNumber, CCDWidth / CCDHeight (photo size).
 Login: always the Windows sign-in of the person running the app (Trusted_Connection).
 No SQL login and no password: nothing to store, nothing to leak.
 
-Settings (all optional) in %LOCALAPPDATA%\\SurveyorCalibration\\camera_db.json:
-  {"server": "", "database": ""}
-Blank server -> <VAN>-SERVER, then this PC.  Blank database -> the van name.
+Where: <VAN>-SERVER, then this PC (a copy on a dev PC); the database is named after the
+van.  No settings: the Database... box was removed (Derek, 2026-11-10).
 """
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 SETTINGS_DIR = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "SurveyorCalibration"
-SETTINGS = SETTINGS_DIR / "camera_db.json"
 TIMEOUT_S = 4
 
 QUERY = """
@@ -62,22 +59,6 @@ class DbResult:
         return f"database {self.database} on {self.server}"
 
 
-# ── settings ──────────────────────────────────────
-
-def load_settings() -> dict:
-    try:
-        return json.loads(SETTINGS.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def save_settings(s: dict) -> None:
-    _cache.clear()
-    SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
-    SETTINGS.write_text(json.dumps({k: s.get(k, "") for k in ("server", "database")}, indent=1),
-                        encoding="utf-8")
-
-
 # ── connecting and reading ───────────────────────────────────────────────────
 
 def _driver() -> str:
@@ -97,21 +78,16 @@ def _connect(server: str, database: str, s: dict | None = None):
     return pyodbc.connect(cs, timeout=TIMEOUT_S, readonly=True)
 
 
-def candidates(van: str, s: dict) -> list[tuple[str, str]]:
-    """(server, database) pairs to try, in order."""
-    db = s.get("database") or van
-    if s.get("server"):
-        return [(s["server"], db)]
-    out = [(f"{van}-SERVER", db)] if van else []
-    return out + [("localhost", db)]
+def candidates(van: str) -> list[tuple[str, str]]:
+    """(server, database) pairs to try, in order: the van's server, then this PC."""
+    return [(f"{van}-SERVER", van), ("localhost", van)] if van else []
 
 
 def _plain(exc, database: str) -> str:
     """The ODBC error in a few plain words (the full text is in the run log)."""
     t = str(exc)
     if "18456" in t or "Login failed" in t:
-        return (f"this Windows user is not allowed into {database}, or there is no such database "
-                "(check the Database... settings)")
+        return f"this Windows user is not allowed into {database}, or there is no such database"
     if "4060" in t or "Cannot open database" in t:
         return f"no database {database}"
     if "08001" in t or "timeout" in t.lower() or "Named Pipes" in t:
@@ -138,11 +114,10 @@ _cache: dict = {}
 
 
 def lookup_cached(van: str) -> DbResult:
-    """lookup() once per van and settings (the Database... box clears it)."""
-    s = load_settings()
-    key = ((van or "").upper(), json.dumps(s, sort_keys=True))
+    """lookup() once per van per session."""
+    key = (van or "").strip().upper()
     if key not in _cache:
-        _cache[key] = lookup(van, s)
+        _cache[key] = lookup(van)
     return _cache[key]
 
 
@@ -150,19 +125,18 @@ def clear_cache() -> None:
     _cache.clear()
 
 
-def lookup(van: str, settings: dict | None = None) -> DbResult:
+def lookup(van: str) -> DbResult:
     """The van's cameras from its database.  Never raises: problems land in .error."""
     van = (van or "").strip().upper()
-    s = load_settings() if settings is None else settings
-    if not van and not s.get("database"):
+    if not van:
         return DbResult(error="No van known, so the database can't be found (type the van at the top).")
     errors = []
-    for server, database in candidates(van, s):
+    for server, database in candidates(van):
         if not _resolves(server):
             errors.append(f"{server}: not found on the network")
             continue
         try:
-            con = _connect(server, database, s)
+            con = _connect(server, database)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{server}: {_plain(exc, database)}")
             continue
@@ -187,14 +161,3 @@ def lookup(van: str, settings: dict | None = None) -> DbResult:
             res.error = f"{res.where} has no enabled cameras in VideoDeviceConfig."
         return res
     return DbResult(error="Could not read the van database - " + "; ".join(errors) + ". Type the serial.")
-
-
-def test_connection(server: str, database: str, settings: dict) -> str:
-    """'' if it works, else why (for the Database... dialog)."""
-    try:
-        con = _connect(server, database, settings)
-        n = con.cursor().execute("SELECT COUNT(*) FROM VideoDeviceConfig").fetchone()[0]
-        con.close()
-        return "" if n else "Connected, but VideoDeviceConfig is empty."
-    except Exception as exc:  # noqa: BLE001
-        return str(exc).splitlines()[0]

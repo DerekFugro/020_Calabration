@@ -1,20 +1,14 @@
-"""setup_screen.py — One camera, step 1: photo folder, camera, serial, Run.
+"""setup_screen.py — One camera, step 1: photo folder, Run.
 
 Emits run_requested(folder, serial, board) — board is None for Auto-detect.
-The camera and serial start blank every time, so last session's camera can't
-slip onto new photos (Derek, 2026-11-01).  Unusable photos always go to
-NotUsed (src/not_used.py).  The board list sits under Advanced: leave it on
-Auto-detect; boards are added in the Boards tab.
-
-Van database (Derek, 2026-11-10): when it answers, the camera list is the van's enabled
-cameras only, and picking one fills in its serial, locked.  Edit unlocks the serial for a
-camera whose label disagrees (still flagged, and logged as typed).  No database: the
-usual list, and the serial is typed.
+The camera and serial are picked in the bar on top (src/widgets/camera_bar.py, shared
+with Load Extrinsic; Derek, 2026-11-10).  Unusable photos always go to NotUsed
+(src/not_used.py).  The board list sits under Advanced: leave it on Auto-detect; boards
+are added in the Boards tab.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt, Signal
@@ -27,27 +21,15 @@ from src.styles import BUTTON_H, INPUT_H, MARGIN, SPACING
 
 _ORG, _APP = "SidewalkProfiler", "Calibration"
 _KEY_FOLDER = "setup/folder"
-_KEY_ROLE_LIST = "setup/role_list"     # JSON list of roles ever typed
 _KEY_BOARD = "board/selected"          # board name or AUTO_DETECT
 
 AUTO_DETECT = "Auto-detect"
-_SEED_ROLES = ["FORWARDLEFT", "FORWARDRIGHT", "ROW", "LEFT", "RIGHT", "REARLEFT", "REARRIGHT",
-               "PAVE", "BENCH"]
-
-
-def _load_json_list(raw) -> list[str]:
-    try:
-        data = json.loads(raw) if raw else []
-        return [str(v) for v in data] if isinstance(data, list) else []
-    except (ValueError, TypeError, AttributeError):
-        return []
-
-
 class SetupScreen(QWidget):
     run_requested = Signal(str, str, object)   # folder, serial, BoardConfig | None
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, bar, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.bar = bar                  # van, camera, serial (shared bar on top)
         self._boards, self._board_errors = [], []
         self._build()
         self._load_settings()
@@ -64,40 +46,6 @@ class SetupScreen(QWidget):
         fl = QHBoxLayout(folder_group)
         fl.setSpacing(SPACING)
         fl.addWidget(self.folder_input); fl.addWidget(self.browse_button)
-
-        self.role_combo = QComboBox()
-        self.role_combo.setEditable(True)
-        self.role_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.role_combo.setFixedHeight(INPUT_H)
-        self.serial_input = QLineEdit()
-        self.serial_input.setPlaceholderText("Required — from the camera label")
-        self.serial_input.setFixedHeight(INPUT_H)
-        self.serial_edit = QPushButton("Edit")
-        self.serial_edit.setFixedHeight(INPUT_H)
-        self.serial_edit.setToolTip("The serial came from the van database.  Edit only if the camera label says otherwise.")
-        self.serial_edit.hide()
-        hint = QLabel("Fill in both every time.  Camera + serial name the result files.")
-        hint.setStyleSheet(dim); hint.setWordWrap(True)
-        camera_group = QGroupBox("Camera")
-        cl = QFormLayout(camera_group)
-        cl.setSpacing(SPACING)
-        # Camera and serial on one line (Derek, 2026-11-06)
-        row = QHBoxLayout(); row.setSpacing(SPACING)
-        row.addWidget(self.role_combo, 1)
-        row.addSpacing(SPACING)
-        row.addWidget(QLabel("Serial number:"))
-        row.addWidget(self.serial_input, 1)
-        row.addWidget(self.serial_edit)
-        cl.addRow("Camera:", row)
-        # What the van's database says about this camera (src/camera_db.py, filled by OneCameraScreen)
-        self.db_label = QLabel("")
-        self.db_label.setWordWrap(True); self.db_label.setStyleSheet(dim)
-        self.db_label.setTextFormat(Qt.TextFormat.RichText)
-        cl.addRow(self.db_label)
-        cl.addRow(hint)
-        self._db_serial = ""            # serial the database gave for the chosen camera
-        self._db_names: list[str] = []  # the van's enabled cameras, when the database answered
-        self._unlocked = False          # Edit pressed for this camera
 
         self.board_combo = QComboBox()
         self.board_combo.setFixedHeight(INPUT_H)
@@ -125,30 +73,20 @@ class SetupScreen(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
         lay.setSpacing(SPACING)
-        lay.addWidget(folder_group); lay.addWidget(camera_group); lay.addWidget(adv)
+        hint = QLabel("Camera and serial: pick them in the bar at the top.  They name the result files.")
+        hint.setStyleSheet(dim); hint.setWordWrap(True)
+        lay.addWidget(folder_group); lay.addWidget(hint); lay.addWidget(adv)
         lay.addStretch()
         lay.addWidget(self.run_button); lay.addWidget(self.status_label)
 
         self.browse_button.clicked.connect(self._browse)
         self.folder_input.textChanged.connect(self._update_run_button)
-        self.serial_input.textChanged.connect(self._update_run_button)
-        self.role_combo.currentTextChanged.connect(self._update_run_button)
+        self.bar.changed.connect(self._update_run_button)
         self.board_combo.currentIndexChanged.connect(self._on_board_changed)
         self.run_button.clicked.connect(self._run)
-        self.serial_edit.clicked.connect(self._unlock_serial)
-        self.role_combo.currentTextChanged.connect(lambda _t: setattr(self, "_unlocked", False))
-
-    def _usual_roles(self) -> list[str]:
-        roles = _load_json_list(QSettings(_ORG, _APP).value(_KEY_ROLE_LIST, ""))
-        return roles + [r for r in _SEED_ROLES if r not in roles]
 
     def _load_settings(self) -> None:
         s = QSettings(_ORG, _APP)
-        self.role_combo.addItems(self._usual_roles())
-        self.role_combo.setCurrentIndex(-1)            # blank: the user picks it
-        self.role_combo.setEditText("")
-        self.role_combo.lineEdit().setPlaceholderText("Pick the camera…")
-        self.serial_input.clear()                     # blank: the user types it
         self.folder_input.setText(str(s.value(_KEY_FOLDER, "") or ""))
         self._load_boards(str(s.value(_KEY_BOARD, AUTO_DETECT) or AUTO_DETECT))
         self._update_run_button()
@@ -202,8 +140,8 @@ class SetupScreen(QWidget):
 
     def _update_run_button(self, *_args) -> None:
         folder = self.folder_input.text().strip()
-        missing = ("Pick the camera" if not self.camera_role else
-                   "Type the camera serial number" if not self.serial_input.text().strip() else
+        missing = ("Pick the camera at the top" if not self.bar.camera_role else
+                   "Type the camera serial at the top" if not self.bar.serial else
                    "Pick the photo folder" if not folder else "")
         self.run_button.setEnabled(not missing)
         if missing:
@@ -217,105 +155,31 @@ class SetupScreen(QWidget):
 
     def _run(self) -> None:
         folder = self.folder_input.text().strip()
-        role = self.camera_role
         s = QSettings(_ORG, _APP)
-        if not self._db_names:                         # remember typed names (not the database's list)
-            roles = [self.role_combo.itemText(i) for i in range(self.role_combo.count())]
-            if role not in roles:
-                roles.append(role); self.role_combo.addItem(role)
-            s.setValue(_KEY_ROLE_LIST, json.dumps(roles))
+        self.bar.remember_role()
         s.setValue(_KEY_FOLDER, folder)
         s.setValue(_KEY_BOARD, self.board_combo.currentData() or AUTO_DETECT)
-        self.run_requested.emit(folder, self.serial_input.text().strip(), self._selected_board())
+        self.run_requested.emit(folder, self.bar.serial, self._selected_board())
 
     # ── Used by the One camera screen ─────────────────────────────────────────
-    def set_db_cameras(self, res) -> None:
-        """Camera list: the van's enabled cameras when the database answered, else the usual list."""
-        names = res.names() if (res is not None and not res.error) else []
-        if names == self._db_names:
-            return
-        current = self.role_combo.currentText()
-        self._db_names = names
-        self.role_combo.blockSignals(True)
-        self.role_combo.clear()
-        self.role_combo.addItems(names or self._usual_roles())
-        self.role_combo.setEditable(not names)        # database list: pick only, no typing
-        if not names:
-            self.role_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-            self.role_combo.lineEdit().setPlaceholderText("Pick the camera…")
-        self.role_combo.setPlaceholderText("Pick the camera…")
-        i = self.role_combo.findText(current, Qt.MatchFlag.MatchFixedString) if current else -1
-        self.role_combo.setCurrentIndex(i)
-        if i < 0 and self.role_combo.isEditable():
-            self.role_combo.setEditText("")
-        self.role_combo.blockSignals(False)
-        self.role_combo.currentTextChanged.emit(self.role_combo.currentText())
-
-    def _lock_serial(self, locked: bool) -> None:
-        self.serial_input.setReadOnly(locked)
-        self.serial_input.setStyleSheet("color: rgb(170,170,170);" if locked else "")
-        self.serial_edit.setVisible(bool(self._db_serial))
-        self.serial_edit.setEnabled(locked)
-
-    def _unlock_serial(self) -> None:
-        self._unlocked = True
-        self._lock_serial(False)
-        self.serial_input.setFocus(); self.serial_input.selectAll()
-
-    def apply_db(self, res, camera: str) -> None:
-        """Fill the serial from the van database and lock it (Edit unlocks it), and say where
-        it came from, or why it could not."""
-        import html as _h
-        row = res.find(camera) if (res is not None and camera) else None
-        typed = self.serial_input.text().strip()
-        if res is None:
-            self._db_serial = ""; self._lock_serial(False)
-            self.db_label.setText(""); return
-        if row is None:
-            if self._db_serial and typed == self._db_serial:
-                self.serial_input.clear()             # the last camera's serial must not stay
-            self._db_serial = ""
-            self._lock_serial(False)
-            self.db_label.setText(_h.escape(res.error) if res.error else
-                                  f"{_h.escape(camera or 'This camera')} is not in the van {_h.escape(res.where)} "
-                                  f"(it lists {_h.escape(', '.join(c.camera for c in res.cameras.values()))}). Type the serial.")
-            self.db_label.setStyleSheet("color: rgb(150,150,150); font-size: 8pt;")
-            return
-        if not self._unlocked or not typed or typed == self._db_serial:
-            self.serial_input.setText(row.serial); typed = row.serial
-        self._db_serial = row.serial
-        self._lock_serial(not self._unlocked)
-        size = f", photos {row.width} x {row.height}" if row.width else ""
-        if typed == row.serial:
-            self.db_label.setText(f"&#10003; Serial from the van {_h.escape(res.where)}{size}.")
-            self.db_label.setStyleSheet("color: rgb(60,200,60); font-size: 8pt;")
-        else:
-            self.db_label.setText(f"&#9888; You typed {_h.escape(typed)}, but the van {_h.escape(res.where)} says "
-                                  f"{_h.escape(row.serial)} for {_h.escape(row.camera)}{size}. Check the camera label.")
-            self.db_label.setStyleSheet("color: rgb(230,180,40); font-size: 8pt;")
-
     @property
     def serial_from(self) -> str:
-        typed = self.serial_input.text().strip()
-        if self._db_serial and typed == self._db_serial:
-            return "van database"
-        return "typed" + (f" (van database says {self._db_serial})" if self._db_serial else "")
+        return self.bar.serial_from
 
     @property
     def camera_role(self) -> str:
-        """Normalised camera role (e.g. 'ROW'); '' if none chosen."""
-        import re
-        cleaned = re.sub(r"[\s_]+", "-", self.role_combo.currentText().strip()).upper()
-        return re.sub(r"-{2,}", "-", cleaned).strip("-")
+        """Normalised camera role (e.g. 'ROW'); '' if none chosen (from the bar on top)."""
+        return self.bar.camera_role
+
+    def clear_folder(self) -> None:
+        """New camera: no photo folder from the last one."""
+        self.folder_input.clear()
 
     def set_busy(self, busy: bool) -> None:
-        for w in (self.run_button, self.browse_button, self.role_combo, self.board_combo):
+        for w in (self.run_button, self.browse_button, self.board_combo):
             w.setEnabled(not busy)
         self.folder_input.setReadOnly(busy)
-        if busy:
-            self.serial_input.setReadOnly(True); self.serial_edit.setEnabled(False)
-        else:
-            self._lock_serial(bool(self._db_serial) and not self._unlocked)
+        self.bar.set_busy(busy)
         if busy:
             self.status_label.setText("Working…")
         else:

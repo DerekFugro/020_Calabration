@@ -5,9 +5,11 @@ The lens comes from this session's Load Intrinsic result for the same camera whe
 passed, or from a CAL_*.yaml / *_intrinsic_cal.xml file.  Solve finds every target,
 works out the camera's angles, height and lever arms, and Save writes every format.
 
-Camera and serial come from the lens (Derek, 2026-11-10), read only.  The Old School
-folder name and the van database check them before the solve (lens check), and where
-the camera points checks them after it.  Warnings only, never a stop.
+Camera and serial come from the bar on top (Derek, 2026-11-10: one camera end to end).
+The lens made on Load Intrinsic for that camera this session is used straight away, no
+loading it twice.  The lens and the Old School folder are checked against the bar before
+the solve (lens check), and where the camera points after it.  Warnings only, never a stop.
+Changing the camera in the bar clears this tab (new_camera).
 """
 
 from __future__ import annotations
@@ -55,15 +57,13 @@ class _Worker(QThread):
 class ExtrinsicScreen(QWidget):
     status = Signal(str)
 
-    def __init__(self, intrinsic_provider=None, parent=None):
+    def __init__(self, bar, intrinsic_provider=None, parent=None):
         super().__init__(parent)
-        self._provider = intrinsic_provider or (lambda cam: None)
+        self.bar = bar                 # van, camera, serial (shared bar on top)
+        self._provider = intrinsic_provider or (lambda: None)
         self._cs = None            # CameraSetups
         self._folder_cam = ""      # camera in the Old School folder name
         self._intr = None          # Intrinsic
-        self._db = None            # camera_db.DbResult for the van (checks the lens serial)
-        self._db_worker = None
-        self.van = ""              # from the van bar
         self._res = None           # CameraResult
         self._worker = None
         from src.extrinsic.control import load_site
@@ -77,8 +77,6 @@ class ExtrinsicScreen(QWidget):
         self.camera_lbl = QLabel("—")
         self.lens = QLineEdit(); self.lens.setReadOnly(True); self.lens.setPlaceholderText("Lens: run Load Intrinsic, or pick a file")
         lb = QPushButton("Lens file…")
-        self.serial = QLineEdit(); self.serial.setReadOnly(True)
-        self.serial.setPlaceholderText("From the lens")
         self.solve_btn = QPushButton("Solve"); self.solve_btn.setObjectName("primary_button")
         self.save_btn = QPushButton("Save all formats")
         # Pop-up photo check (src/viewer): each setup's targets from its .targets.json
@@ -92,7 +90,6 @@ class ExtrinsicScreen(QWidget):
         f.addRow("Old School folder:", r1)
         f.addRow("Camera:", self.camera_lbl)
         f.addRow("Lens:", r2)
-        f.addRow("Serial:", self.serial)
         # Is this the right lens file?  Plain words and dates, never a stop.
         self.lens_info = QLabel(""); self.lens_info.setWordWrap(True)
         self.lens_info.setTextFormat(Qt.TextFormat.RichText); self.lens_info.hide()
@@ -148,7 +145,7 @@ class ExtrinsicScreen(QWidget):
         self.solve_btn.clicked.connect(self._solve)
         self.save_btn.clicked.connect(self._save)
         self.setups.currentRowChanged.connect(self._show_setup)
-        self.serial.textChanged.connect(lambda _t: self._lens_checks())
+        self.bar.changed.connect(self._bar_changed)
         self._buttons()
 
     # ── folder / lens ────────────────────────────────────────────────────────
@@ -178,46 +175,44 @@ class ExtrinsicScreen(QWidget):
         self._camera_text()
         for s in self._cs.setups:
             self.setups.addItem(f"{s.name}  {'(no van pose)' if s.van is None else ''}")
-        got = self._provider(self._folder_cam)
-        if got is not None:
-            self._set_lens(got)
-        self._look_up_van()
+        self.refresh_lens()
         self._lens_checks()
         self.status.emit(f"{self._cs.camera}: {len(self._cs.setups)} setups.")
         self._buttons()
 
+    @property
+    def van(self) -> str:
+        return self.bar.van
+
     def _camera_text(self):
-        """Camera line: the lens' camera (or the folder's when the lens doesn't say)."""
-        if self._cs is None:
-            self.camera_lbl.setText("—"); return
-        from src.extrinsic.lens_check import camera_used
-        lens_cam = getattr(self._intr, "camera", "") if self._intr else ""
-        cam = camera_used(self._intr, self._folder_cam)
-        where = ("from the lens" if lens_cam else "from the folder name" if cam else "")
-        txt = (f"{cam} ({where})" if cam else "? (not in the lens or the folder name)")
-        if lens_cam and self._folder_cam and lens_cam != self._folder_cam:
-            txt += f"  ·  the folder says {self._folder_cam}"
-        txt += f"   ·   {len(self._cs.setups)} setups" + (f"   ·   {self._cs.van}" if self._cs.van else "")
+        """Camera line: what the top bar says, and the Old School folder if it disagrees."""
+        cam, ser = self.bar.camera, self.bar.serial
+        txt = (f"{cam}, serial {ser or '?'}  (top bar)" if cam else "Pick the camera and serial at the top")
+        if self._cs is not None:
+            if self._folder_cam and cam and self._folder_cam != cam:
+                txt += f"   ·   the folder says {self._folder_cam}"
+            txt += f"   ·   {len(self._cs.setups)} setups" + (f"   ·   {self._cs.van}" if self._cs.van else "")
         self.camera_lbl.setText(txt)
 
-    def _look_up_van(self):
-        """The van's cameras from its database, in the background; the lens check uses them."""
-        van = self.van or (self._cs.van if self._cs else "")
-        self._db = None
-        if not van:
-            return
-        from src.widgets.db_worker import DbWorker
-        self._db_worker = DbWorker(van, self)
-        self._db_worker.done.connect(self._db_done)
-        self._db_worker.start()
+    def _bar_changed(self):
+        self._camera_text(); self._lens_checks(); self._buttons()
 
-    def _db_done(self, van, res):
-        if van != (self.van or (self._cs.van if self._cs else "")):
-            return                           # the van changed while looking
-        self._db = res
-        if res.error:
-            self.status.emit(res.error[:200])
-        self._lens_checks()
+    def refresh_lens(self):
+        """Use this session's Load Intrinsic lens for the bar's camera, unless a lens file was picked."""
+        if self._intr is not None and not self._intr.source.startswith("Load Intrinsic this session"):
+            return
+        got = self._provider()
+        if got is not None:
+            self._set_lens(got)
+
+    def new_camera(self):
+        """The camera changed in the top bar: start over (no folder, lens or result from the last camera)."""
+        if self._worker is not None and self._worker.isRunning():
+            return
+        self._cs, self._intr, self._res, self._folder_cam = None, None, None, ""
+        self.folder.clear(); self.lens.clear(); self.setups.clear(); self.details.clear()
+        self.result.hide(); self.lens_info.hide(); self.view.set_bgr(None)
+        self._camera_text(); self._buttons()
 
     def _pick_lens(self):
         p, _ = QFileDialog.getOpenFileName(self, "Lens file", self.folder.text(), "Lens (*.yaml *.yml *.xml)")
@@ -230,14 +225,9 @@ class ExtrinsicScreen(QWidget):
             QMessageBox.warning(self, "Lens", str(exc))
 
     def _set_lens(self, intr):
-        # The serial and camera come from the lens (2026-11-10).  A wrong lens shows up in the
-        # lens check: folder name, van database serial, and where the camera points.
+        # A wrong lens shows up in the lens check: camera and serial against the top bar.
         self._intr = intr
         self.lens.setText(intr.source)
-        # Camera and serial come from the lens.  A lens file without a serial: type it.
-        self.serial.setText(intr.serial or "")
-        self.serial.setReadOnly(bool(intr.serial))
-        self.serial.setPlaceholderText("From the lens" if intr.serial else "The lens file has no serial: type it")
         self._camera_text()
         self._lens_checks()
         self._buttons()
@@ -247,7 +237,8 @@ class ExtrinsicScreen(QWidget):
         from src.extrinsic.lens_check import OK, lens_checks
         if self._intr is None:
             self.lens_info.hide(); return []
-        cks = lens_checks(self._intr, self._cs.setups if self._cs else [], self._folder_cam, self._db)
+        cks = lens_checks(self._intr, self._cs.setups if self._cs else [], self.bar.camera, self.bar.serial,
+                          self._folder_cam)
         rows = []
         for s, t, d in cks:
             col, sym = ("#3cc83c", "&#10003;") if s == OK else ("#e0b050", "&#9888;")
@@ -283,8 +274,7 @@ class ExtrinsicScreen(QWidget):
     def _solve(self):
         if self._cs is None or self._intr is None:
             return
-        from src.extrinsic.lens_check import camera_used
-        cs = replace(self._cs, camera=camera_used(self._intr, self._folder_cam))   # results named after the lens' camera
+        cs = replace(self._cs, camera=self.bar.camera)      # results named after the top bar's camera
         self._worker = _Worker(cs, self.site, self._intr, self)
         self._worker.progress.connect(self.status.emit)
         self._worker.done.connect(self._done)
@@ -363,9 +353,9 @@ class ExtrinsicScreen(QWidget):
         res = self._res
         if res is None or res.R_bc is None:
             return
-        serial = self.serial.text().strip()
+        serial = self.bar.serial
         if not serial:
-            QMessageBox.warning(self, "Save", "The lens file has no serial: type the camera serial."); return
+            QMessageBox.warning(self, "Save", "Type the camera serial at the top."); return
         from src.extrinsic.outputs import export_camera
         view = "0" if res.camera == "ROW" else ""
         out = export_camera(res, self.site, serial, self._intr.source, camera_view=view, intrinsic=self._intr)
@@ -382,5 +372,6 @@ class ExtrinsicScreen(QWidget):
     def _buttons(self, busy=None):
         if busy is None:
             busy = bool(self._worker and self._worker.isRunning())
-        self.solve_btn.setEnabled(self._cs is not None and self._intr is not None and not busy)
+        self.solve_btn.setEnabled(self._cs is not None and self._intr is not None and bool(self.bar.camera)
+                                  and not busy)
         self.save_btn.setEnabled(self._res is not None and self._res.R_bc is not None and not busy)

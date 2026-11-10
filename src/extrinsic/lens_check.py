@@ -5,9 +5,8 @@ people loading calibrations see the numbers but can't tell what they mean.
 
 Checks (each is OK or WARN, never a stop):
   * the lens passed its own check
-  * the lens is for this camera: the lens names the camera and serial (Derek, 2026-11-10),
-    checked against the Old School folder name, and against the van database's serial
-    for that camera when the database answers
+  * the lens and the Old School folder are for the camera and serial picked in the top
+    bar (Derek, 2026-11-10: one camera end to end; the van database fills the serial there)
   * the lens file was made from photos the same size as the Old School photos
   * the lens and the Old School photos are from the same visit (dates shown)
 """
@@ -83,56 +82,45 @@ def _lens_size(intr) -> tuple[int, int, bool]:
     return int(round(2 * intr.K[0, 2])), int(round(2 * intr.K[1, 2])), False
 
 
-def camera_used(intr, folder_camera: str = "") -> str:
-    """The camera the extrinsic is for: the lens' camera, else the folder's."""
-    return (getattr(intr, "camera", "") or "") or (folder_camera or "")
-
-
-def _camera_checks(intr, folder_camera: str, db) -> list[tuple[str, str, str]]:
+def _camera_checks(intr, camera: str, serial: str, folder_camera: str) -> list[tuple[str, str, str]]:
     out = []
-    lc, fc = (getattr(intr, "camera", "") or ""), (folder_camera or "")
-    ls = (intr.serial or "").strip()
-    of = f" (serial {ls})" if ls else ""
-    if not lc and not fc:
-        out.append((WARN, "Nobody says which camera this is",
-                    "Neither the lens file nor the Old School folder name says which camera this is. "
-                    "Pick a lens file made by this app: it records the camera."))
-    elif not lc:
-        out.append((WARN, "The lens file doesn't say which camera it is for",
-                    f"The folder says {fc}, so {fc} is used. Make sure the lens file is for that camera."))
-    elif not fc:
-        out.append((WARN, "The folder name doesn't say which camera this is",
-                    f"The lens is for {lc}{of}, so {lc} is used. The solve checks where the camera points."))
-    elif lc != fc:
-        out.append((WARN, "The lens is for a different camera than the folder",
-                    f"The lens file is for {lc}{of}. The Old School folder is {fc}. "
-                    f"Pick the lens for {fc}, or the Old School folder for {lc}."))
-    else:
-        out.append((OK, "The lens is for this camera", f"The lens and the folder both say {lc}{of}."))
-
-    cam = lc or fc
-    if not ls:
+    cam, ser = (camera or "").strip(), (serial or "").strip()
+    lc, ls = (getattr(intr, "camera", "") or ""), (intr.serial or "").strip()
+    if not cam or not ser:
+        out.append((WARN, "Pick the camera and serial at the top",
+                    "Then the app can check that the lens and the Old School photos are for that camera."))
+        return out
+    this = f"{cam}, serial {ser}"
+    # the lens
+    if lc and lc != cam:
+        out.append((WARN, "The lens is for a different camera",
+                    f"The lens file is for {lc}" + (f" (serial {ls})" if ls else "") + f". The top bar says {this}. "
+                    "A lens only fits the one camera it was made for: pick the lens for this camera."))
+    elif ls and ls != ser:
+        out.append((WARN, "The lens is for a different serial",
+                    f"The lens file is for serial {ls}. The top bar says {this}. If the camera was swapped, "
+                    "redo the lens for the new camera; otherwise check the camera label."))
+    elif not ls:
         out.append((WARN, "The lens file has no serial number",
-                    "Type the camera serial from its label."))
-    elif db is not None and not getattr(db, "error", "") and cam:
-        row = db.find(cam)
-        if row is None:
-            out.append((WARN, f"The van database has no enabled {cam} camera",
-                        f"The van {db.where} lists " + (", ".join(db.names()) or "no cameras") + "."))
-        elif str(row.serial).strip() != ls:
-            out.append((WARN, "The lens is for a different serial than the van has",
-                        f"The lens file is for serial {ls}. The van {db.where} says {cam} is serial "
-                        f"{row.serial}. If the camera was swapped, redo the lens for the new camera; "
-                        "otherwise check the camera label."))
-        else:
-            out.append((OK, "The van database agrees", f"{cam} is serial {ls} in the van {db.where}."))
+                    f"Make sure it is the lens for {this}."))
+    else:
+        out.append((OK, "The lens is for this camera", f"Both say {this}." if lc else
+                    f"Serial {ser} (the lens file doesn't name the camera)."))
+    # the Old School folder
+    if not folder_camera:
+        out.append((WARN, "The folder name doesn't say which camera this is",
+                    f"Using {cam} from the top bar. The solve checks where the camera points."))
+    elif folder_camera != cam:
+        out.append((WARN, "The Old School folder is for a different camera",
+                    f"The folder is {folder_camera}. The top bar says {cam}. Pick the Old School folder for {cam}."))
+    else:
+        out.append((OK, "The Old School folder is for this camera", f"Folder {folder_camera}."))
     return out
 
 
-def lens_checks(intr, setups, folder_camera: str = "", db=None) -> list[tuple[str, str, str]]:
+def lens_checks(intr, setups, camera: str, serial: str, folder_camera: str = "") -> list[tuple[str, str, str]]:
     """(state, title, detail) in plain words, for the screen and the office page.
-    folder_camera: the camera in the Old School folder name.  db: camera_db.DbResult or None
-    (no database line when it is None or could not be read)."""
+    camera, serial: from the top bar.  folder_camera: the camera in the Old School folder name."""
     out = []
     if intr is None:
         return [(WARN, "No lens file yet", "Run Load Intrinsic for this camera, or pick its lens file.")]
@@ -149,8 +137,8 @@ def lens_checks(intr, setups, folder_camera: str = "", db=None) -> list[tuple[st
                     "It was made by the old app (or has no grade), so nobody knows how good it is. "
                     "You can use it for now. Redo the lens with this app when you can."))
 
-    # 2. which camera: the lens names it; the folder and the van database check it
-    out += _camera_checks(intr, folder_camera, db)
+    # 2. which camera: the top bar says; the lens and the Old School folder must agree
+    out += _camera_checks(intr, camera, serial, folder_camera)
 
     # 3. photo size
     size = old_school_size(setups)

@@ -25,14 +25,14 @@ from src.widgets.setup_screen import SetupScreen
 class OneCameraScreen(QWidget):
     status = Signal(str)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, bar, parent=None) -> None:
         super().__init__(parent)
-        self.van = ""                  # set from the van bar
+        self.bar = bar                 # van, camera, serial (shared bar on top)
         self._run = None               # FolderRun on show
         self._role = self._serial = ""
         self._worker = None
 
-        self.setup_screen = SetupScreen()
+        self.setup_screen = SetupScreen(bar)
         self.report_screen = ReportScreen()
         self.stack = QStackedWidget()
         self.stack.addWidget(self.setup_screen)
@@ -42,9 +42,6 @@ class OneCameraScreen(QWidget):
         lay.addWidget(self.stack)
 
         self.setup_screen.run_requested.connect(self._on_run_requested)
-        self._db_res, self._db_worker = None, None
-        self.setup_screen.role_combo.currentTextChanged.connect(lambda _t: self._apply_db())
-        self.setup_screen.serial_input.textEdited.connect(lambda _t: self._apply_db())
         self.report_screen.save_requested.connect(self._save)
         self.report_screen.new_calibration_requested.connect(self._back_to_setup)
         self.report_screen.check_requested.connect(self._check)
@@ -61,12 +58,13 @@ class OneCameraScreen(QWidget):
         else:
             van = van_from_path(folder)
             van_from = "folder path" if van else "not known"
+        db = self.bar.db_res
         inputs = {"van": van, "van_from": van_from,
-                  "camera": camera_from_name(self._role) or self._role, "camera_from": "picked on the setup screen",
-                  "serial": serial, "serial_from": self.setup_screen.serial_from,
-                  "van_database": None if self._db_res is None else
-                  {"where": self._db_res.where if not self._db_res.error else "", "error": self._db_res.error,
-                   "cameras": {c.camera: c.serial for c in self._db_res.cameras.values()}},
+                  "camera": camera_from_name(self._role) or self._role, "camera_from": "picked in the top bar",
+                  "serial": serial, "serial_from": self.bar.serial_from,
+                  "van_database": None if db is None else
+                  {"where": db.where if not db.error else "", "error": db.error,
+                   "cameras": {c.camera: c.serial for c in db.cameras.values()}},
                   "board_picked": getattr(board, "name", None) or "auto-detect"}
         from src.workers import FolderWorker
         self._worker = FolderWorker(folder, board, parent=self, inputs=inputs)
@@ -142,32 +140,19 @@ class OneCameraScreen(QWidget):
             self.status.emit(f"Opened {target.name}")
         return False
 
-    # ── Van database: camera serials (src/camera_db.py) ───────────────────────
-    def set_van(self, van: str) -> None:
-        """Called by the van bar.  Looks the van's cameras up in the background."""
-        self.van = (van or "").strip()
-        self._db_res = None
-        self.setup_screen.set_db_cameras(None)
-        self.setup_screen.apply_db(None, "")
-        if not self.van:
-            return
-        from src.widgets.db_worker import DbWorker
-        self._db_worker = DbWorker(self.van, self)
-        self._db_worker.done.connect(self._db_done)
-        self._db_worker.start()
-        self.setup_screen.db_label.setText(f"Looking up {self.van}'s cameras in the van database...")
+    @property
+    def van(self) -> str:
+        return self.bar.van
 
-    def _db_done(self, van, res) -> None:
-        if van != self.van:
-            return                       # the van changed while looking
-        self._db_res = res
-        self.setup_screen.set_db_cameras(res)     # the van's enabled cameras only
-        self._apply_db()
-
-    def _apply_db(self) -> None:
-        from src.van_scan import camera_from_name
-        cam = camera_from_name(self.setup_screen.camera_role) or self.setup_screen.role_combo.currentText()
-        self.setup_screen.apply_db(self._db_res, cam)
+    def new_camera(self) -> None:
+        """The camera changed in the top bar: start over (no folder, no result from the last camera)."""
+        if self._worker is not None and self._worker.isRunning():
+            return                         # the bar is locked while a calibration runs
+        self._run = None
+        self._role = self._serial = ""
+        self.setup_screen.clear_folder()
+        self.stack.setCurrentWidget(self.setup_screen)
+        self.setup_screen.set_busy(False)
 
     # ── Loaded results: check each other's work ────────────────────────────
     def _load_previous(self, yaml_path) -> None:

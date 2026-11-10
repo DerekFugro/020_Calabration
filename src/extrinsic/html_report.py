@@ -41,7 +41,7 @@ def checks(cam, site, serial: str, intrinsic=None) -> list[tuple[str, str, str]]
         out.append((WARN, "Lens file", "Not recorded"))
     else:
         from src.extrinsic.lens_check import lens_checks
-        cks = getattr(cam, "lens_checks", None) or lens_checks(intrinsic, [sr.setup for sr in cam.setups], cam.camera)
+        cks = getattr(cam, "lens_checks", None) or lens_checks(intrinsic, [sr.setup for sr in cam.setups], cam.camera, serial)
         for s, t, d in cks:
             out.append((OK if s == "ok" else WARN, t, d))
         out.append((OK, "Lens file used", intrinsic.source))

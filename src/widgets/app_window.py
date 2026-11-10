@@ -7,7 +7,9 @@
   Boards             add, measure and print calibration boards
 
 One camera at a time (Derek, 2026-11-03): the Whole van table was removed.
-The van bar on top is shared: the van typed there labels every output.
+The bar on top is shared (src/widgets/camera_bar.py): van, camera and serial label every
+output, and the lens made on Load Intrinsic is used by Load Extrinsic for the same camera
+without loading it again.  Changing the camera clears both tabs (Derek, 2026-11-10).
 All screens report through the one status bar at the bottom.
 """
 
@@ -15,7 +17,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QScrollArea, QTabWidget, QVBoxLayout, QWidget,
+    QFrame, QLabel, QMainWindow, QScrollArea, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from src.styles import STYLESHEET_MAIN
@@ -44,20 +46,16 @@ class AppWindow(QMainWindow):
         self.setStyleSheet(STYLESHEET_MAIN)
         say = self.statusBar().showMessage
 
-        # Van bar
-        self.van_edit = QLineEdit(); self.van_edit.setPlaceholderText("e.g. ARAN69")
-        self.van_edit.setMaximumWidth(140)
-        bar = QHBoxLayout()
-        bar.addWidget(QLabel("Van:")); bar.addWidget(self.van_edit)
-        from PySide6.QtWidgets import QPushButton
-        db_btn = QPushButton("Database..."); db_btn.setToolTip("Where the van's ARAN database is (camera serials)")
-        bar.addWidget(db_btn); bar.addStretch(1)
+        # Bar on top: van, camera, serial
+        from src.widgets.camera_bar import CameraBar
+        self.bar = CameraBar()
+        self.van_edit = self.bar.van_edit
 
-        self.single = OneCameraScreen()
+        self.single = OneCameraScreen(self.bar)
 
         from src.widgets.boards_tab import BoardsTab
         from src.widgets.extrinsic_screen import ExtrinsicScreen
-        self.extrinsic = ExtrinsicScreen(intrinsic_provider=self._intrinsic_for)
+        self.extrinsic = ExtrinsicScreen(self.bar, intrinsic_provider=self._intrinsic_for)
         self.boards_tab = BoardsTab()
 
         self.tabs = QTabWidget()
@@ -78,33 +76,28 @@ class AppWindow(QMainWindow):
 
         central = QWidget()
         lay = QVBoxLayout(central)
-        lay.addLayout(bar); lay.addWidget(self.tabs, 1)
+        lay.addWidget(self.bar); lay.addWidget(self.tabs, 1)
         self.setCentralWidget(central)
         say("Ready.")
 
         for screen in (self.single, self.extrinsic, self.boards_tab):
             screen.status.connect(say)
         self.boards_tab.boards_changed.connect(self.single.setup_screen.reload_boards)
-        self.van_edit.textChanged.connect(self.single.set_van)
-        self.van_edit.textChanged.connect(lambda t: setattr(self.extrinsic, "van", t.strip()))
-        db_btn.clicked.connect(self._database)
+        self.bar.camera_changed.connect(lambda _c: self.single.new_camera())
+        self.bar.camera_changed.connect(lambda _c: self.extrinsic.new_camera())
+        self.tabs.currentChanged.connect(lambda _i: self.extrinsic.refresh_lens())
         # On the van, the PC name says which van it is (ARAN69-SERVER, ARAN69-ROW); shown so
         # it can be corrected.
         from src.van_scan import van_from_computer
         self.van_edit.setText(van_from_computer())
 
-    def _database(self):
-        from src.widgets.db_dialog import DbDialog
-        if DbDialog(self.van_edit.text(), self).exec():
-            self.single.set_van(self.van_edit.text())        # look the van up again with the new settings
-
-    def _intrinsic_for(self, camera: str):
-        """This session's Load Intrinsic result for this camera (or for any camera when the
-        folder doesn't name one), or None."""
+    def _intrinsic_for(self):
+        """This session's Load Intrinsic lens for the camera in the top bar, or None.
+        (Changing the camera clears Load Intrinsic, so a lens here is always this camera's.)"""
         from src.extrinsic.intrinsic_source import from_run
         from src.van_scan import camera_from_name
         run = self.single.last_run
         lens_cam = camera_from_name(self.single.last_role) or self.single.last_role
-        if run is None or (camera and lens_cam != camera):
-            return None                       # folder name unknown: offer this session's lens anyway
+        if run is None or lens_cam != self.bar.camera:
+            return None
         return from_run(run, self.single.last_serial, lens_cam)
