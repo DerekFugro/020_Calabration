@@ -50,3 +50,40 @@ def test_report_shows_grade_banner(win, tmp_path):
     rs = win.single.report_screen
     rs.set_data(cal, BoardConfig(), str(tmp_path))
     assert rs.grade_banner.text().startswith("NOT PASSED")
+
+
+def test_van_database_picks_camera_and_locks_serial(win):
+    """2026-11-10: database answered -> only its enabled cameras; serial filled and locked;
+    Edit unlocks it; no database -> the usual list, serial typed."""
+    from src.camera_db import CameraRow, DbResult
+    s = win.single.setup_screen
+    res = DbResult(cameras={"ROW": CameraRow("ROW", "101324", 2880, 1860),
+                            "FORWARDLEFT": CameraRow("ForwardLeft", "2000713", 1920, 1080)},
+                   server="ARAN69-SERVER", database="ARAN69")
+    s.set_db_cameras(res)
+    items = [s.role_combo.itemText(i) for i in range(s.role_combo.count())]
+    assert items == ["ForwardLeft", "ROW"] and not s.role_combo.isEditable()
+    s.role_combo.setCurrentText("ROW")
+    s.apply_db(res, "ROW")
+    assert s.serial_input.text() == "101324" and s.serial_input.isReadOnly() and s.serial_edit.isEnabled()
+    assert s.serial_from == "van database"
+    s.serial_edit.click()
+    assert not s.serial_input.isReadOnly()
+    s.serial_input.setText("999"); s.apply_db(res, "ROW")
+    assert s.serial_input.text() == "999" and "van database says 101324" in s.serial_from
+    s.role_combo.setCurrentText("ForwardLeft"); s.apply_db(res, "ForwardLeft")   # new camera: locked again
+    assert s.serial_input.text() == "2000713" and s.serial_input.isReadOnly()
+    s.set_db_cameras(None); s.apply_db(None, "")
+    assert s.role_combo.isEditable() and "ROW" in [s.role_combo.itemText(i) for i in range(s.role_combo.count())]
+    assert not s.serial_input.isReadOnly() and not s.serial_edit.isVisible()
+    s.serial_input.clear(); s.role_combo.setCurrentIndex(-1); s.role_combo.setEditText("")
+
+
+def test_extrinsic_camera_and_serial_from_the_lens(win):
+    import numpy as np
+    from src.extrinsic.intrinsic_source import Intrinsic
+    e = win.extrinsic
+    e._set_lens(Intrinsic(np.eye(3), np.zeros(5), "2000713", "test lens", True, camera="ForwardLeft"))
+    assert e.serial.text() == "2000713" and e.serial.isReadOnly()
+    e._set_lens(Intrinsic(np.eye(3), np.zeros(5), "", "old lens", False, camera=""))
+    assert e.serial.text() == "" and not e.serial.isReadOnly()

@@ -147,6 +147,7 @@ class OneCameraScreen(QWidget):
         """Called by the van bar.  Looks the van's cameras up in the background."""
         self.van = (van or "").strip()
         self._db_res = None
+        self.setup_screen.set_db_cameras(None)
         self.setup_screen.apply_db(None, "")
         if not self.van:
             return
@@ -160,6 +161,7 @@ class OneCameraScreen(QWidget):
         if van != self.van:
             return                       # the van changed while looking
         self._db_res = res
+        self.setup_screen.set_db_cameras(res)     # the van's enabled cameras only
         self._apply_db()
 
     def _apply_db(self) -> None:

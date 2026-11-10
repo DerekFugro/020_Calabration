@@ -200,12 +200,12 @@ def test_local_ball_finds_pale_ball():
     assert _local_ball(cv2.cvtColor(np.full((200, 200, 3), 95, np.uint8), cv2.COLOR_BGR2LAB), 100, 100, 14.0, 1.0) is None
 
 
-def _intr(serial="2000713", w=1920, h=1080, when=None, passed=True):
+def _intr(serial="2000713", w=1920, h=1080, when=None, passed=True, camera="ForwardLeft"):
     import numpy as np
     from src.extrinsic.intrinsic_source import Intrinsic
     K = np.array([[1700.0, 0, w / 2], [0, 1700.0, h / 2], [0, 0, 1]])
     return Intrinsic(K, np.zeros(5), serial, "test lens" + ("" if passed else " (NOT PASSED)"), passed, "" if passed else "The lens did not pass.",
-                     width=w, height=h, date=when, date_what="Lens photos taken")
+                     width=w, height=h, date=when, date_what="Lens photos taken", camera=camera)
 
 
 def _os_setups(tmp_path, w=1920, h=1080, names=("20260404.102502", "20260404.120509")):
@@ -223,8 +223,9 @@ def _os_setups(tmp_path, w=1920, h=1080, names=("20260404.102502", "20260404.120
 def test_lens_checks_all_good(tmp_path):
     from datetime import datetime
     from src.extrinsic.lens_check import OK, lens_checks
-    cks = lens_checks(_intr(when=datetime(2026, 4, 3, 9, 0)), _os_setups(tmp_path), "2000713")
+    cks = lens_checks(_intr(when=datetime(2026, 4, 3, 9, 0)), _os_setups(tmp_path), "ForwardLeft", _db("2000713"))
     assert all(s == OK for s, _, _ in cks), cks
+    assert any(t == "The van database agrees" for _, t, _ in cks)
     dates = [d for s, t, d in cks if "same visit" in t][0]
     assert "Fri 3 Apr 2026" in dates and "Sat 4 Apr 2026" in dates and "1 day apart" in dates
 
@@ -233,10 +234,11 @@ def test_lens_checks_warn_in_plain_words(tmp_path):
     from datetime import datetime
     from src.extrinsic.lens_check import WARN, lens_checks, warnings_text
     cks = lens_checks(_intr(serial="2000211", w=3840, h=2160, when=datetime(2026, 2, 18), passed=False),
-                      _os_setups(tmp_path), "2000713")
+                      _os_setups(tmp_path), "ForwardLeft", _db("2000713"))
     warn = {t: d for s, t, d in cks if s == WARN}
-    assert "The lens file looks like it is for a different camera" in warn
-    assert "2000211" in warn["The lens file looks like it is for a different camera"]
+    assert "The lens is for a different serial than the van has" in warn
+    assert "2000211" in warn["The lens is for a different serial than the van has"]
+    assert "2000713" in warn["The lens is for a different serial than the van has"]
     size = warn["The lens file is for a different photo size"]
     assert "1920 × 1080" in size and "3840 × 2160" in size
     visit = warn["The lens is from a different visit"]
@@ -245,13 +247,46 @@ def test_lens_checks_warn_in_plain_words(tmp_path):
     assert len(warnings_text(cks)) == 4
 
 
+def _db(serial, camera="ForwardLeft", error=""):
+    from src.camera_db import CameraRow, DbResult
+    cams = {} if error else {camera.upper(): CameraRow(camera, serial, 1920, 1080)}
+    return DbResult(cameras=cams, server="ARAN62-SERVER", database="ARAN62", error=error)
+
+
 def test_lens_checks_missing_info(tmp_path):
     from src.extrinsic.lens_check import WARN, lens_checks
-    cks = lens_checks(_intr(serial="", when=None), _os_setups(tmp_path), "")
+    cks = lens_checks(_intr(serial="", when=None), _os_setups(tmp_path), "ForwardLeft")
     titles = [t for s, t, _ in cks if s == WARN]
-    assert "Type the camera serial" in titles and "The lens file has no date" in titles
-    cks = lens_checks(_intr(serial=""), _os_setups(tmp_path), "2000713")
-    assert any(t == "Can't check the lens file is for this camera" for _, t, _ in cks)
+    assert "The lens file has no serial number" in titles and "The lens file has no date" in titles
+    cks = lens_checks(_intr(camera=""), _os_setups(tmp_path), "")
+    assert any(t == "Nobody says which camera this is" for _, t, _ in cks)
+
+
+def test_camera_and_serial_come_from_the_lens(tmp_path):
+    """2026-11-10: the lens names the camera; the folder and the van database check it."""
+    from src.extrinsic.lens_check import OK, WARN, camera_used, lens_checks
+    st = _os_setups(tmp_path)
+    assert camera_used(_intr(camera="ROW"), "ForwardLeft") == "ROW"
+    assert camera_used(_intr(camera=""), "ForwardLeft") == "ForwardLeft"
+    warn = {t: d for s, t, d in lens_checks(_intr(camera="ROW"), st, "ForwardLeft") if s == WARN}
+    assert "The lens is for a different camera than the folder" in warn
+    assert "ROW" in warn["The lens is for a different camera than the folder"]
+    warn = {t: d for s, t, d in lens_checks(_intr(), st, "") if s == WARN}
+    assert "The folder name doesn't say which camera this is" in warn
+    # van database can't be read, or doesn't have the camera
+    titles = [t for _, t, _ in lens_checks(_intr(), st, "ForwardLeft", _db("", error="SQL Server not reachable"))]
+    assert not any("van database" in t or "van has" in t for t in titles)
+    states = {t: s for s, t, _ in lens_checks(_intr(), st, "ForwardLeft", _db("2000713", camera="ROW"))}
+    assert states["The van database has no enabled ForwardLeft camera"] == WARN
+    assert states["The lens is for this camera"] == OK
+
+
+def test_lens_files_record_the_camera(tmp_path):
+    from src.extrinsic.intrinsic_source import from_file
+    y = tmp_path / "CAL_1_20260101_000000.yaml"
+    y.write_text("serial_number: '1'\ncamera_role: FORWARDLEFT\ncamera_matrix: {data: [1,0,0,0,1,0,0,0,1]}\n"
+                 "dist_coeffs: {data: [0,0,0,0,0]}\ngrade: {passed: true, headline: PASS}\n")
+    assert from_file(str(y)).camera == "ForwardLeft"
 
 
 def test_lens_file_dates_and_size(tmp_path):
@@ -262,7 +297,7 @@ def test_lens_file_dates_and_size(tmp_path):
 <RadialDistortion k1="0" k2="0" k3="0" /><TangentialDistortion p1="0" p2="0" /></OpenCVCameraModel>
 </IntrinsicCalibration>""", encoding="utf-8")
     i = from_file(str(x))
-    assert (i.width, i.height, i.serial) == (1920, 1080, "2000713")
+    assert (i.width, i.height, i.serial, i.camera) == (1920, 1080, "2000713", "ForwardLeft")
     assert i.date.date().isoformat() == "2026-04-06" and i.date_what == "Lens calibrated"
 
 

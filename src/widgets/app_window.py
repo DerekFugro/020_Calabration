@@ -99,10 +99,12 @@ class AppWindow(QMainWindow):
             self.single.set_van(self.van_edit.text())        # look the van up again with the new settings
 
     def _intrinsic_for(self, camera: str):
-        """This session's passed Load Intrinsic result for this camera, or None."""
+        """This session's Load Intrinsic result for this camera (or for any camera when the
+        folder doesn't name one), or None."""
         from src.extrinsic.intrinsic_source import from_run
         from src.van_scan import camera_from_name
         run = self.single.last_run
-        if run is None or camera_from_name(self.single.last_role) != camera:
-            return None
-        return from_run(run, self.single.last_serial)
+        lens_cam = camera_from_name(self.single.last_role) or self.single.last_role
+        if run is None or (camera and lens_cam != camera):
+            return None                       # folder name unknown: offer this session's lens anyway
+        return from_run(run, self.single.last_serial, lens_cam)

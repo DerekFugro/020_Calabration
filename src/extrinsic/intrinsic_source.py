@@ -32,9 +32,16 @@ class Intrinsic:
     height: int = 0
     date: datetime | None = None
     date_what: str = ""    # what the date is, in words ("Lens photos taken")
+    camera: str = ""       # camera the lens was made for (ROW, ForwardLeft, ...); '' if the file doesn't say
 
 
-def from_run(run, serial: str) -> Intrinsic | None:
+def _camera(name: str) -> str:
+    from src.van_scan import camera_from_name
+    name = (name or "").strip()
+    return camera_from_name(name) or name
+
+
+def from_run(run, serial: str, camera: str = "") -> Intrinsic | None:
     g = getattr(run, "grade", None)
     if run is None or run.cal is None or g is None or getattr(run, "error", ""):
         return None
@@ -42,7 +49,7 @@ def from_run(run, serial: str) -> Intrinsic | None:
     from src.utils import FROM_FOLDER, photos_taken
     w, h = (tuple(run.cal.image_size) + (0, 0))[:2] if getattr(run.cal, "image_size", None) is not None else (0, 0)
     first, _last, how = photos_taken(run.folder)
-    extra = dict(width=int(w), height=int(h), date=first,
+    extra = dict(width=int(w), height=int(h), date=first, camera=_camera(camera),
                  date_what="Lens photos taken" if how == FROM_FOLDER else "Lens photo files dated (may be the copy date)")
     if g.passed:
         return Intrinsic(K, D, serial, f"Load Intrinsic this session: {run.folder} (PASS)", True, **extra)
@@ -73,6 +80,7 @@ def from_file(path: str) -> Intrinsic:
         what = ("Lens photos taken" if pt.get("from") == FROM_FOLDER
                 else "Lens photo files dated (may be the copy date)")
         extra = dict(width=int(res.get("width") or 0), height=int(res.get("height") or 0),
+                     camera=_camera(str(d.get("camera_role") or "")),
                      date=taken or _when(d.get("calibration_datetime", "")),
                      date_what=what if taken else "Lens worked out on")
         if g and g.get("passed") and not not_passed:
@@ -91,6 +99,8 @@ def from_file(path: str) -> Intrinsic:
         K = np.array([[f["fx"], 0, f["cx"]], [0, f["fy"], f["cy"]], [0, 0, 1.0]])
         D = np.array([f["k1"], f["k2"], f["p1"], f["p2"], f["k3"]])
         m = re.search(r"_(\d+)_intrinsic_cal\.xml$", name, re.I)
+        from src.van_scan import _XML_RE
+        mc = _XML_RE.search(name)
         why = ("The lens file is marked NOT_PASSED." if not_passed
                else "The lens file was not graded by this app.")
         import xml.etree.ElementTree as ET
@@ -100,5 +110,6 @@ def from_file(path: str) -> Intrinsic:
             when = None
         return Intrinsic(K, D, m.group(1) if m else "", f"{path} ({'NOT PASSED' if not_passed else 'not graded by this app'})",
                          False, why + " Usable for now; redo the lens.",
-                         width=int(f["width"]), height=int(f["height"]), date=when, date_what="Lens calibrated")
+                         width=int(f["width"]), height=int(f["height"]), date=when, date_what="Lens calibrated",
+                         camera=_camera(mc.group("cam")) if mc else "")
     raise ValueError("Pick a CAL_*.yaml or an *_intrinsic_cal.xml file.")

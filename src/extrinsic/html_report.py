@@ -41,12 +41,13 @@ def checks(cam, site, serial: str, intrinsic=None) -> list[tuple[str, str, str]]
         out.append((WARN, "Lens file", "Not recorded"))
     else:
         from src.extrinsic.lens_check import lens_checks
-        for s, t, d in lens_checks(intrinsic, [sr.setup for sr in cam.setups], serial):
+        cks = getattr(cam, "lens_checks", None) or lens_checks(intrinsic, [sr.setup for sr in cam.setups], cam.camera)
+        for s, t, d in cks:
             out.append((OK if s == "ok" else WARN, t, d))
         out.append((OK, "Lens file used", intrinsic.source))
 
     # camera name
-    name_warn = [x for x in cam.warnings if "points" in x and ("folder says" in x or "not in the folder" in x)]
+    name_warn = [x for x in cam.warnings if "points" in x and ("is set as" in x or "position unknown" in x)]
     out.append((BAD, "Camera name doesn't match where it points", name_warn[0]) if name_warn
                else (OK, "Camera name matches where it points",
                      f"{cam.camera}, points {cam.pan_tilt_roll[0]:.0f} deg" if np.isfinite(cam.pan_tilt_roll[0]) else cam.camera))

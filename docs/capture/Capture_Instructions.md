@@ -148,17 +148,17 @@ None. Anyone signed in to the van PC can use it. No admin rights needed to run.
   `{file, time, width, height, countdown: bool}`.
 - Settings (last folder, last van, JPEG quality, countdown seconds, grab key):
   `QSettings("SidewalkProfiler", "SurveyorCapture")`. No passwords stored by Capture —
-  the database password, if any, stays in `src/camera_db.py`'s Windows-DPAPI store.
+  the database login is the PC's Windows sign-in (`src/camera_db.py`), so there is none.
 - Serials are text everywhere. Never convert to int.
 
 ## ⭐ Security & data handling:
 - Threat model: protect the van's ARAN system (database, settings, collection) from
-  being changed or disrupted, and keep any SQL password private. Trust boundaries:
+  being changed or disrupted. Trust boundaries:
   the database rows, the Settings XML file, DirectShow device names, folder paths
   typed or picked by the user.
-- Database: read only, Windows sign-in by default, reuse `src/camera_db.py`
-  unchanged (it already uses parameterless fixed SELECTs, ReadOnly intent, DPAPI
-  password store). No new SQL.
+- Database: read only, Windows sign-in only (no SQL login, no password), reuse
+  `src/camera_db.py` unchanged (it already uses parameterless fixed SELECTs and
+  ReadOnly intent). No new SQL.
 - Settings XML: parse with `xml.etree.ElementTree` (no network, no DTD/entity
   expansion — reject the file if it contains `<!DOCTYPE`), cap file size at 10 MB,
   read only `VideoDeviceConfig-*` blocks (`CaptureView`, `CaptureDeviceName`,
@@ -167,8 +167,8 @@ None. Anyone signed in to the van PC can use it. No admin rights needed to run.
 - File names: build from a camera name cleaned to `[A-Za-z0-9_-]`; never from raw
   input. Write only inside the chosen folder.
 - No network access other than the SQL Server connection camera_db already makes.
-- No secrets in code or repo. There is no `.env` in this project: the only secret
-  (optional SQL password) is stored per user per PC with Windows DPAPI by camera_db.
+- No secrets in code or repo. There is no `.env` in this project and no stored
+  password: the database login is the PC's Windows sign-in.
 - Errors shown to the crew in plain English; full details (traceback) go to the
   log file `%LOCALAPPDATA%\SurveyorCalibration\capture_errors.log` (append, rotate at
   5 MB). Never show or log a password or connection string with a password.

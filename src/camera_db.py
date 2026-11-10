@@ -5,28 +5,23 @@ van (ARAN28 on ARAN28-SERVER); on the dev PC a copy sits on this PC (ARAN69 on
 localhost).  Table VideoDeviceConfig has one row per camera: CaptureView (ROW,
 ForwardLeft, ...), CameraSerialNumber, CCDWidth / CCDHeight (photo size).
 
-Login: Windows sign-in (dev PC), or a SQL login.  A SQL password is never in the code
-or the repo: it is kept in Windows' protected store (DPAPI) in the settings folder, so
-only this Windows user on this PC can read it back.
+Login: always the Windows sign-in of the person running the app (Trusted_Connection).
+No SQL login and no password: nothing to store, nothing to leak.
 
 Settings (all optional) in %LOCALAPPDATA%\\SurveyorCalibration\\camera_db.json:
-  {"server": "", "database": "", "auth": "windows" | "sql", "user": ""}
+  {"server": "", "database": ""}
 Blank server -> <VAN>-SERVER, then this PC.  Blank database -> the van name.
 """
 
 from __future__ import annotations
 
-import base64
-import ctypes
 import json
 import os
-from ctypes import wintypes
 from dataclasses import dataclass, field
 from pathlib import Path
 
 SETTINGS_DIR = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "SurveyorCalibration"
 SETTINGS = SETTINGS_DIR / "camera_db.json"
-SECRET = SETTINGS_DIR / "camera_db.secret"
 TIMEOUT_S = 4
 
 QUERY = """
@@ -55,12 +50,19 @@ class DbResult:
     def find(self, camera: str) -> CameraRow | None:
         return self.cameras.get((camera or "").replace(" ", "").upper())
 
+    def names(self) -> list[str]:
+        """The van's enabled cameras as the database names them, in the usual order."""
+        from src.van_scan import CAMERAS, camera_from_name
+        order = {c: i for i, c in enumerate(CAMERAS)}
+        rows = list(self.cameras.values())
+        return [r.camera for r in sorted(rows, key=lambda r: (order.get(camera_from_name(r.camera), 99), r.camera))]
+
     @property
     def where(self) -> str:
         return f"database {self.database} on {self.server}"
 
 
-# ── settings and the protected password ──────────────────────────────────────
+# ── settings ──────────────────────────────────────
 
 def load_settings() -> dict:
     try:
@@ -72,41 +74,8 @@ def load_settings() -> dict:
 def save_settings(s: dict) -> None:
     _cache.clear()
     SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
-    SETTINGS.write_text(json.dumps({k: s.get(k, "") for k in ("server", "database", "auth", "user")}, indent=1),
+    SETTINGS.write_text(json.dumps({k: s.get(k, "") for k in ("server", "database")}, indent=1),
                         encoding="utf-8")
-
-
-class _Blob(ctypes.Structure):
-    _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
-
-
-def _dpapi(data: bytes, protect: bool) -> bytes:
-    """Windows DPAPI: only this Windows user on this PC can undo it."""
-    src = _Blob(len(data), ctypes.cast(ctypes.create_string_buffer(data, len(data)), ctypes.POINTER(ctypes.c_char)))
-    out = _Blob()
-    fn = ctypes.windll.crypt32.CryptProtectData if protect else ctypes.windll.crypt32.CryptUnprotectData
-    if protect:
-        ok = fn(ctypes.byref(src), "SurveyorCalibration", None, None, None, 0, ctypes.byref(out))
-    else:
-        ok = fn(ctypes.byref(src), None, None, None, None, 0, ctypes.byref(out))
-    if not ok:
-        raise OSError("Windows could not protect / read the stored password.")
-    try:
-        return ctypes.string_at(out.pbData, out.cbData)
-    finally:
-        ctypes.windll.kernel32.LocalFree(out.pbData)
-
-
-def store_password(pw: str) -> None:
-    SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
-    SECRET.write_text(base64.b64encode(_dpapi(pw.encode("utf-8"), True)).decode("ascii"), encoding="ascii")
-
-
-def stored_password() -> str:
-    try:
-        return _dpapi(base64.b64decode(SECRET.read_text(encoding="ascii")), False).decode("utf-8")
-    except (OSError, ValueError, AttributeError):
-        return ""
 
 
 # ── connecting and reading ───────────────────────────────────────────────────
@@ -120,17 +89,11 @@ def _driver() -> str:
     raise RuntimeError("No SQL Server ODBC driver on this PC (install 'ODBC Driver 18 for SQL Server').")
 
 
-def _connect(server: str, database: str, s: dict):
+def _connect(server: str, database: str, s: dict | None = None):
+    """Log in with this PC's Windows sign-in (no SQL login, no password)."""
     import pyodbc
     cs = (f"DRIVER={{{_driver()}}};SERVER={server};DATABASE={database};"
-          "Encrypt=yes;TrustServerCertificate=yes;ApplicationIntent=ReadOnly;")
-    if s.get("auth") == "sql":
-        pw = stored_password()
-        if not pw:
-            raise RuntimeError("A SQL login is set but no password is stored on this PC (Database... button).")
-        cs += f"UID={s.get('user', '')};PWD={pw};"
-    else:
-        cs += "Trusted_Connection=yes;"
+          "Encrypt=yes;TrustServerCertificate=yes;ApplicationIntent=ReadOnly;Trusted_Connection=yes;")
     return pyodbc.connect(cs, timeout=TIMEOUT_S, readonly=True)
 
 
@@ -147,7 +110,8 @@ def _plain(exc, database: str) -> str:
     """The ODBC error in a few plain words (the full text is in the run log)."""
     t = str(exc)
     if "18456" in t or "Login failed" in t:
-        return f"login refused, or there is no database {database} (check the Database... settings)"
+        return (f"this Windows user is not allowed into {database}, or there is no such database "
+                "(check the Database... settings)")
     if "4060" in t or "Cannot open database" in t:
         return f"no database {database}"
     if "08001" in t or "timeout" in t.lower() or "Named Pipes" in t:
@@ -210,16 +174,17 @@ def lookup(van: str, settings: dict | None = None) -> DbResult:
         finally:
             con.close()
         res = DbResult(server=server, database=database)
-        # an exported database can hold rows for several vans: prefer this van's, enabled ones
+        # Only enabled cameras (Derek, 2026-11-10).  An exported database can hold rows for
+        # several vans: this van's rows win.
         def rank(r):
             mod = (r.VideoModuleName or "").upper().replace(" ", "")
-            return (bool(r.Enabled), mod.startswith(van) if van else True)
+            return mod.startswith(van) if van else True
         for r in sorted(rows, key=rank):
-            if r.CaptureView and r.CameraSerialNumber:
+            if r.Enabled and r.CaptureView and r.CameraSerialNumber:
                 res.cameras[r.CaptureView.replace(" ", "").upper()] = CameraRow(
                     r.CaptureView, str(r.CameraSerialNumber).strip(), int(r.CCDWidth or 0), int(r.CCDHeight or 0))
         if not res.cameras:
-            res.error = f"{res.where} has no cameras in VideoDeviceConfig."
+            res.error = f"{res.where} has no enabled cameras in VideoDeviceConfig."
         return res
     return DbResult(error="Could not read the van database - " + "; ".join(errors) + ". Type the serial.")
 

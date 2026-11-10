@@ -4,12 +4,17 @@ Pick ONE camera's Old School folder (…\\Old School\\ForwardLeft) and its lens 
 The lens comes from this session's Load Intrinsic result for the same camera when it
 passed, or from a CAL_*.yaml / *_intrinsic_cal.xml file.  Solve finds every target,
 works out the camera's angles, height and lever arms, and Save writes every format.
+
+Camera and serial come from the lens (Derek, 2026-11-10), read only.  The Old School
+folder name and the van database check them before the solve (lens check), and where
+the camera points checks them after it.  Warnings only, never a stop.
 """
 
 from __future__ import annotations
 
 import html
 import os
+from dataclasses import replace
 
 import cv2
 from PySide6.QtCore import Qt, QThread, Signal
@@ -54,7 +59,10 @@ class ExtrinsicScreen(QWidget):
         super().__init__(parent)
         self._provider = intrinsic_provider or (lambda cam: None)
         self._cs = None            # CameraSetups
+        self._folder_cam = ""      # camera in the Old School folder name
         self._intr = None          # Intrinsic
+        self._db = None            # camera_db.DbResult for the van (checks the lens serial)
+        self._db_worker = None
         self.van = ""              # from the van bar
         self._res = None           # CameraResult
         self._worker = None
@@ -69,7 +77,8 @@ class ExtrinsicScreen(QWidget):
         self.camera_lbl = QLabel("—")
         self.lens = QLineEdit(); self.lens.setReadOnly(True); self.lens.setPlaceholderText("Lens: run Load Intrinsic, or pick a file")
         lb = QPushButton("Lens file…")
-        self.serial = QLineEdit(); self.serial.setPlaceholderText("Camera serial")
+        self.serial = QLineEdit(); self.serial.setReadOnly(True)
+        self.serial.setPlaceholderText("From the lens")
         self.solve_btn = QPushButton("Solve"); self.solve_btn.setObjectName("primary_button")
         self.save_btn = QPushButton("Save all formats")
         # Pop-up photo check (src/viewer): each setup's targets from its .targets.json
@@ -151,7 +160,7 @@ class ExtrinsicScreen(QWidget):
     def _load_folder(self):
         from src.extrinsic.oldschool import scan_old_school
         root = self.folder.text().strip()
-        self._cs, self._res = None, None
+        self._cs, self._res, self._folder_cam = None, None, ""
         self.result.hide(); self.setups.clear(); self.details.clear()
         if not os.path.isdir(root):
             QMessageBox.warning(self, "Folder", "Pick a folder that exists."); self._buttons(); return
@@ -165,30 +174,50 @@ class ExtrinsicScreen(QWidget):
                                 + ".\nPick the folder of the camera you want.")
             self._buttons(); return
         self._cs = cams[0]
-        self.camera_lbl.setText(f"{self._cs.camera or '? (not in the folder name)'}   ·   {len(self._cs.setups)} setups"
-                                + (f"   ·   {self._cs.van}" if self._cs.van else ""))
+        self._folder_cam = self._cs.camera
+        self._camera_text()
         for s in self._cs.setups:
             self.setups.addItem(f"{s.name}  {'(no van pose)' if s.van is None else ''}")
-        got = self._provider(self._cs.camera)
+        got = self._provider(self._folder_cam)
         if got is not None:
             self._set_lens(got)
-        self._serial_from_db()
+        self._look_up_van()
         self._lens_checks()
         self.status.emit(f"{self._cs.camera}: {len(self._cs.setups)} setups.")
         self._buttons()
 
-    def _serial_from_db(self):
-        """Serial for this camera from the van database, if the serial box is empty."""
-        if self._cs is None or self.serial.text().strip():
+    def _camera_text(self):
+        """Camera line: the lens' camera (or the folder's when the lens doesn't say)."""
+        if self._cs is None:
+            self.camera_lbl.setText("—"); return
+        from src.extrinsic.lens_check import camera_used
+        lens_cam = getattr(self._intr, "camera", "") if self._intr else ""
+        cam = camera_used(self._intr, self._folder_cam)
+        where = ("from the lens" if lens_cam else "from the folder name" if cam else "")
+        txt = (f"{cam} ({where})" if cam else "? (not in the lens or the folder name)")
+        if lens_cam and self._folder_cam and lens_cam != self._folder_cam:
+            txt += f"  ·  the folder says {self._folder_cam}"
+        txt += f"   ·   {len(self._cs.setups)} setups" + (f"   ·   {self._cs.van}" if self._cs.van else "")
+        self.camera_lbl.setText(txt)
+
+    def _look_up_van(self):
+        """The van's cameras from its database, in the background; the lens check uses them."""
+        van = self.van or (self._cs.van if self._cs else "")
+        self._db = None
+        if not van:
             return
-        from src.camera_db import lookup_cached
-        res = lookup_cached(self.van or self._cs.van)
-        row = res.find(self._cs.camera)
-        if row is not None:
-            self.serial.setText(row.serial)
-            self.status.emit(f"Serial {row.serial} for {row.camera} from the van {res.where}.")
-        elif res.error:
+        from src.widgets.db_worker import DbWorker
+        self._db_worker = DbWorker(van, self)
+        self._db_worker.done.connect(self._db_done)
+        self._db_worker.start()
+
+    def _db_done(self, van, res):
+        if van != (self.van or (self._cs.van if self._cs else "")):
+            return                           # the van changed while looking
+        self._db = res
+        if res.error:
             self.status.emit(res.error[:200])
+        self._lens_checks()
 
     def _pick_lens(self):
         p, _ = QFileDialog.getOpenFileName(self, "Lens file", self.folder.text(), "Lens (*.yaml *.yml *.xml)")
@@ -201,10 +230,15 @@ class ExtrinsicScreen(QWidget):
             QMessageBox.warning(self, "Lens", str(exc))
 
     def _set_lens(self, intr):
-        # The serial is not filled in from the lens file: the person types the camera's
-        # serial, so a lens file for another camera shows up in the lens check.
+        # The serial and camera come from the lens (2026-11-10).  A wrong lens shows up in the
+        # lens check: folder name, van database serial, and where the camera points.
         self._intr = intr
         self.lens.setText(intr.source)
+        # Camera and serial come from the lens.  A lens file without a serial: type it.
+        self.serial.setText(intr.serial or "")
+        self.serial.setReadOnly(bool(intr.serial))
+        self.serial.setPlaceholderText("From the lens" if intr.serial else "The lens file has no serial: type it")
+        self._camera_text()
         self._lens_checks()
         self._buttons()
 
@@ -213,7 +247,7 @@ class ExtrinsicScreen(QWidget):
         from src.extrinsic.lens_check import OK, lens_checks
         if self._intr is None:
             self.lens_info.hide(); return []
-        cks = lens_checks(self._intr, self._cs.setups if self._cs else [], self.serial.text())
+        cks = lens_checks(self._intr, self._cs.setups if self._cs else [], self._folder_cam, self._db)
         rows = []
         for s, t, d in cks:
             col, sym = ("#3cc83c", "&#10003;") if s == OK else ("#e0b050", "&#9888;")
@@ -249,7 +283,9 @@ class ExtrinsicScreen(QWidget):
     def _solve(self):
         if self._cs is None or self._intr is None:
             return
-        self._worker = _Worker(self._cs, self.site, self._intr, self)
+        from src.extrinsic.lens_check import camera_used
+        cs = replace(self._cs, camera=camera_used(self._intr, self._folder_cam))   # results named after the lens' camera
+        self._worker = _Worker(cs, self.site, self._intr, self)
         self._worker.progress.connect(self.status.emit)
         self._worker.done.connect(self._done)
         self._worker.start(); self._buttons(busy=True)
@@ -260,7 +296,9 @@ class ExtrinsicScreen(QWidget):
             QMessageBox.critical(self, "Solve", str(res)); self.status.emit(str(res)); return
         self._res = res
         from src.extrinsic.lens_check import warnings_text
-        lens_warn = warnings_text(self._lens_checks())
+        cks = self._lens_checks()
+        res.lens_checks = cks                       # the office page shows the same checks
+        lens_warn = warnings_text(cks)
         res.warnings[:0] = lens_warn
         ok = res.passed
         txt = f"<span style='font-size:16pt; font-weight:bold'>{'PASS' if ok else 'NOT PASSED'}</span>"
@@ -327,7 +365,7 @@ class ExtrinsicScreen(QWidget):
             return
         serial = self.serial.text().strip()
         if not serial:
-            QMessageBox.warning(self, "Save", "Type the camera serial."); return
+            QMessageBox.warning(self, "Save", "The lens file has no serial: type the camera serial."); return
         from src.extrinsic.outputs import export_camera
         view = "0" if res.camera == "ROW" else ""
         out = export_camera(res, self.site, serial, self._intr.source, camera_view=view, intrinsic=self._intr)

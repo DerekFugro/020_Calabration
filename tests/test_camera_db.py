@@ -27,8 +27,9 @@ def test_prefers_this_vans_enabled_rows(monkeypatch):
     monkeypatch.setattr(camera_db, "_connect", lambda *a: con)
     monkeypatch.setattr(camera_db, "_resolves", lambda h, wait_s=1.5: True)
     res = camera_db.lookup("ARANSW1", {"server": "s", "database": "d"})
-    assert res.find("row").serial == "222" and res.find("Rear").serial == "333" and res.where == "database d on s"
-    assert res.find("ForwardLeft") is None
+    assert res.find("row").serial == "222" and res.where == "database d on s"
+    assert res.find("Rear") is None                      # disabled cameras are left out
+    assert res.find("ForwardLeft") is None and res.names() == ["ROW"]
 
 
 def test_unreachable_says_so_in_plain_words(monkeypatch):
@@ -38,16 +39,25 @@ def test_unreachable_says_so_in_plain_words(monkeypatch):
     monkeypatch.setattr(camera_db, "_resolves", lambda h, wait_s=1.5: h == "localhost")
     res = camera_db.lookup("ARAN28", {})
     assert not res.cameras and "ARAN28-SERVER: not found on the network" in res.error
-    assert "login refused" in res.error and "Type the serial" in res.error
+    assert "this Windows user is not allowed into ARAN28" in res.error and "Type the serial" in res.error
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="Windows protected store")
-def test_password_round_trip(tmp_path, monkeypatch):
+def test_windows_sign_in_only(monkeypatch):
+    """Always Trusted_Connection; never a SQL user or password, even from old settings."""
+    seen = {}
+    fake = SimpleNamespace(drivers=lambda: ["ODBC Driver 18 for SQL Server"],
+                           connect=lambda cs, **kw: seen.setdefault("cs", cs))
+    monkeypatch.setitem(sys.modules, "pyodbc", fake)
+    camera_db._connect("ARAN28-SERVER", "ARAN28", {"auth": "sql", "user": "sa"})
+    assert "Trusted_Connection=yes" in seen["cs"]
+    assert "UID=" not in seen["cs"] and "PWD=" not in seen["cs"]
+
+
+def test_settings_keep_only_server_and_database(tmp_path, monkeypatch):
     monkeypatch.setattr(camera_db, "SETTINGS_DIR", tmp_path)
-    monkeypatch.setattr(camera_db, "SECRET", tmp_path / "s.secret")
-    camera_db.store_password("pa ss")
-    assert camera_db.stored_password() == "pa ss"
-    assert b"pa ss" not in (tmp_path / "s.secret").read_bytes()
+    monkeypatch.setattr(camera_db, "SETTINGS", tmp_path / "camera_db.json")
+    camera_db.save_settings({"server": "S", "database": "D", "auth": "sql", "user": "sa"})
+    assert camera_db.load_settings() == {"server": "S", "database": "D"}
 
 
 def test_local_aran69_copy_if_present():

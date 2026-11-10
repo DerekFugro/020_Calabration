@@ -92,6 +92,7 @@ class CameraResult:
     warnings: list = field(default_factory=list)
     K: np.ndarray | None = None
     D: np.ndarray | None = None
+    lens_checks: list = field(default_factory=list)   # (state, title, detail) from the screen, for the office page
 
 
 def load_seeds(site) -> dict:
@@ -270,11 +271,11 @@ def _combine(res: CameraResult, good: list) -> None:
                            f"(limit {MAX_HEIGHT_SPREAD_M * 1000:.0f} mm).")
     near = closest_position(res.pan_tilt_roll[0])
     if res.camera and near != res.camera:
-        res.warnings.append(f"The folder says {res.camera}, but the camera points {res.pan_tilt_roll[0]:.0f} deg, "
-                            f"closest to {near}. Check the folder name.")
+        res.warnings.append(f"The camera is set as {res.camera}, but it points {res.pan_tilt_roll[0]:.0f} deg, "
+                            f"closest to {near}. Check the lens file, the folder and where the camera is mounted.")
     elif not res.camera:
-        res.warnings.append(f"Camera position not in the folder name; it points {res.pan_tilt_roll[0]:.0f} deg, "
-                            f"closest to {near}.")
+        res.warnings.append(f"Camera position unknown (not in the lens or the folder name); it points "
+                            f"{res.pan_tilt_roll[0]:.0f} deg, closest to {near}.")
     res.warnings.append(f"Forward/right lever arms come from VBS GPS (about ±0.3 m, setups spread "
                         f"{res.lever_spread_m[0]:.2f} / {res.lever_spread_m[1]:.2f} m); the loop refines them.")
     res.passed = not res.reasons

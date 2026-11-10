@@ -53,7 +53,7 @@ def copy_missing(old: Path, new: Path) -> list[Path]:
 
 def migrate_old_name() -> list[Path]:
     """The app was called 020_Calabration.  Bring its per-user settings (van database
-    settings, protected password) and, when installed, its shared boards/sites across."""
+    settings) and, when installed, its shared boards/sites across."""
     local = Path(os.environ.get("LOCALAPPDATA") or Path.home())
     copied = copy_missing(local / OLD_APP_NAME, local / APP_NAME)
     if FROZEN:
