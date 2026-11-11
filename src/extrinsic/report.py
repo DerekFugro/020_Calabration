@@ -69,7 +69,7 @@ def write_pdf(cam, data: dict, path: Path) -> None:
             pdf.cell(w, 4.2, _ascii("" if v is None else str(v)), border=1)
         pdf.ln()
     for s in data["setups"]:
-        for t in s["problems"] + s["old_click_checks"]:
+        for t in (s.get("problems") or []) + (s.get("old_click_checks") or []):
             pdf.multi_cell(W, 4, _ascii(f"{s['name']}: {t}"), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(2)
     pdf.set_font("Helvetica", size=6.5)

@@ -340,3 +340,25 @@ def test_direction_from_strong_setups():
     res2 = CameraResult(camera="ROW", van="X", folder="f")
     _combine(res2, few)
     assert any("Camera direction from all setups" in w for w in res2.warnings)
+
+
+def test_extrinsic_pdf_is_written(tmp_path):
+    """2026-11-11: Save wrote pdf_error.txt ('old_click_checks') instead of the PDF."""
+    import numpy as np
+    from types import SimpleNamespace
+    from src.extrinsic.report import write_pdf
+    data = {"created": "2026-11-11T08:48:22", "serial": "88888888", "old_school_folder": str(tmp_path),
+            "intrinsic": "test lens", "camera": "ROW",
+            "grade": {"passed": True, "headline": "PASS: good", "reasons": [], "warnings": ["a warning"]},
+            "pointing_deg": {"pan_right": 0.5, "tilt_up": -10.0, "roll_cw": 0.1, "spread_between_setups_max": 0.2},
+            "lever_arm_m": {"forward": 1.2, "right": 0.0, "up_above_pavement": 2.5, "forward_right_spread": [0.1, 0.1],
+                            "up_spread": 0.01, "camera_height_navd88_m": 100.0},
+            "rwc_angles_unverified_deg": {"heading_offset": 0.5, "pitch_offset": -10.0, "roll_offset": 0.1},
+            "setups": [{"name": "20250619.151616", "passed": True, "seed": "default", "targets": 22,
+                        "miss_rms_mm": 8.0, "range_m": 12.0, "pointing_deg": [0.5, -10.0, 0.1],
+                        "lever_forward_right_m": [1.2, 0.0], "up_above_pavement_m": 2.5, "problems": ["one problem"]}],
+            "notes": ["note one"]}
+    cam = SimpleNamespace(van="ARAN54", camera="ROW", setups=[], K=np.eye(3), D=np.zeros(5))
+    out = tmp_path / "ARAN54_ROW_88888888_extrinsic.pdf"
+    write_pdf(cam, data, out)
+    assert out.exists() and out.read_bytes()[:4] == b"%PDF"
