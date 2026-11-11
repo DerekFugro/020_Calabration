@@ -134,3 +134,9 @@ def test_extrinsic_opens_saved_results(win, tmp_path):
     assert "22 targets" in e.details.toPlainText()
     e.new_camera()
     assert not e.report_btn.isEnabled() and e._loaded is None
+
+
+def test_version_in_window_title(win):
+    """2026-11-11: the version shows beside the app name in the window frame."""
+    from src.version import app_version
+    assert win.windowTitle() == f"SurveyorCalibration   {app_version()}"
