@@ -198,6 +198,8 @@ class OneCameraScreen(QWidget):
         if run is None:
             return
         dt = datetime.now()
+        from src.superseded import intrinsic_results, move_to_superseded
+        earlier = intrinsic_results(run.folder)       # moved to Superseded once the new result is written
         try:
             yaml_path, pdf_path = write_outputs(run.cal, run.board, self._serial, run.detections,
                                                 run.filter_results, run.folder, dt=dt, role=self._role,
@@ -209,6 +211,9 @@ class OneCameraScreen(QWidget):
                 f"(written by every run)\n\nSaved next to the photos:\n{run.folder}")
         self._export_dir = ""
         note += self._export_fleet_formats(dt)
+        moved = move_to_superseded(earlier, run.folder)
+        if moved:
+            note += f"\n\n{len(moved)} earlier result file(s)/folder(s) moved to {Path(run.folder).name}\\Superseded."
         if getattr(run, "run_log", ""):
             try:
                 from src.run_log import record_save

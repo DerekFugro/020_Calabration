@@ -86,10 +86,17 @@ class AppWindow(QMainWindow):
         self.bar.camera_changed.connect(lambda _c: self.single.new_camera())
         self.bar.camera_changed.connect(lambda _c: self.extrinsic.new_camera())
         self.tabs.currentChanged.connect(lambda _i: self.extrinsic.refresh_lens())
+        # Load Extrinsic's buttons sit in the top bar row, shown only on that tab (2026-11-11).
+        self.bar.set_actions([self.extrinsic.actions])
+        self.tabs.currentChanged.connect(self._tab_shown)
+        self._tab_shown(self.tabs.currentIndex())
         # On the van, the PC name says which van it is (ARAN69-SERVER, ARAN69-ROW); shown so
         # it can be corrected.
         from src.van_scan import van_from_computer
         self.van_edit.setText(van_from_computer())
+
+    def _tab_shown(self, _i):
+        self.extrinsic.actions.setVisible(self.tabs.currentWidget() is self.extrinsic)
 
     def _intrinsic_for(self):
         """This session's Load Intrinsic lens for the camera in the top bar, or None.

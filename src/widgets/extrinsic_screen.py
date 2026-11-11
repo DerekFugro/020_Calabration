@@ -10,6 +10,11 @@ The lens made on Load Intrinsic for that camera this session is used straight aw
 loading it twice.  The lens and the Old School folder are checked against the bar before
 the solve (lens check), and where the camera points after it.  Warnings only, never a stop.
 Changing the camera in the bar clears this tab (new_camera).
+
+Buttons (View photos, Solve, Save all formats, Open report) sit in the top bar row, shown
+only on this tab (self.actions; Derek, 2026-11-11).  A camera folder that was solved and
+saved before says so: open the saved results, or solve again.  Save moves the earlier
+Extrinsic_<date> folders into Superseded (src/superseded.py): one current result.
 """
 
 from __future__ import annotations
@@ -18,8 +23,12 @@ import html
 import os
 from dataclasses import replace
 
+from pathlib import Path
+
 import cv2
-from PySide6.QtCore import Qt, QThread, Signal
+import yaml
+from PySide6.QtCore import Qt, QThread, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QMessageBox,
     QPlainTextEdit, QPushButton, QScrollArea, QSplitter, QVBoxLayout, QWidget,
@@ -63,6 +72,8 @@ class ExtrinsicScreen(QWidget):
         self._provider = intrinsic_provider or (lambda: None)
         self._cs = None            # CameraSetups
         self._folder_cam = ""      # camera in the Old School folder name
+        self._loaded = None        # (Extrinsic_<date> folder, its saved data) when showing saved results
+        self._report_pdf = None    # the PDF of the result on screen, once saved
         self._intr = None          # Intrinsic
         self._res = None           # CameraResult
         self._worker = None
@@ -82,6 +93,14 @@ class ExtrinsicScreen(QWidget):
         # Pop-up photo check (src/viewer): each setup's targets from its .targets.json
         self.view_btn = QPushButton("View photos...")
         self.view_btn.clicked.connect(self._open_viewer)
+        self.report_btn = QPushButton("Open report")
+        self.report_btn.setToolTip("The PDF of the result on screen (after Save, or an earlier saved result)")
+        self.report_btn.clicked.connect(self._open_report)
+        # These buttons live in the top bar row (app_window puts self.actions there).
+        self.actions = QWidget()
+        al = QHBoxLayout(self.actions); al.setContentsMargins(0, 0, 0, 0)
+        for b in (self.view_btn, self.solve_btn, self.save_btn, self.report_btn):
+            al.addWidget(b)
 
         box = QGroupBox("Camera")
         f = QFormLayout(box)
@@ -99,7 +118,6 @@ class ExtrinsicScreen(QWidget):
                       "control file is never used.  Old EOP files are never read: the app finds the targets.")
         info.setStyleSheet(_DIM); info.setWordWrap(True)
         f.addRow(info)
-        btns = QHBoxLayout(); btns.addStretch(1); btns.addWidget(self.view_btn); btns.addWidget(self.solve_btn); btns.addWidget(self.save_btn)
 
         self.result = QLabel(""); self.result.setWordWrap(True)
         self.result.setAlignment(Qt.AlignmentFlag.AlignCenter); self.result.hide()
@@ -132,7 +150,7 @@ class ExtrinsicScreen(QWidget):
         top_scroll.setFrameShape(QFrame.Shape.NoFrame); top_scroll.setWidget(top)
         top_scroll.setMinimumHeight(120)
         upper = QWidget(); ul = QVBoxLayout(upper); ul.setContentsMargins(0, 0, 0, 0)
-        ul.addWidget(top_scroll, 1); ul.addLayout(btns)
+        ul.addWidget(top_scroll, 1)
         self._split = split = QSplitter(Qt.Orientation.Vertical); split.setChildrenCollapsible(False)
         split.addWidget(upper); split.addWidget(lower)
         split.setStretchFactor(0, 0); split.setStretchFactor(1, 1); split.setSizes([380, 470])
@@ -158,6 +176,7 @@ class ExtrinsicScreen(QWidget):
         from src.extrinsic.oldschool import scan_old_school
         root = self.folder.text().strip()
         self._cs, self._res, self._folder_cam = None, None, ""
+        self._loaded, self._report_pdf = None, None
         self.result.hide(); self.setups.clear(); self.details.clear()
         if not os.path.isdir(root):
             QMessageBox.warning(self, "Folder", "Pick a folder that exists."); self._buttons(); return
@@ -179,6 +198,90 @@ class ExtrinsicScreen(QWidget):
         self._lens_checks()
         self.status.emit(f"{self._cs.camera}: {len(self._cs.setups)} setups.")
         self._buttons()
+        self._ask_about_saved()
+
+    # ── solved before? (Derek, 2026-11-11) ───────────────────────────────────
+    @staticmethod
+    def _saved_data(folder: Path):
+        """(data, pdf) from an Extrinsic_<date> folder, or (None, None)."""
+        y = next((p for p in sorted(folder.glob("*_extrinsic.yaml"))), None)
+        try:
+            data = yaml.safe_load(y.read_text(encoding="utf-8")) if y else None
+        except (OSError, ValueError, yaml.YAMLError):
+            data = None
+        return data, next((p for p in sorted(folder.glob("*_extrinsic.pdf"))), None)
+
+    def _ask_about_saved(self):
+        from src.superseded import extrinsic_results
+        saved = extrinsic_results(self._cs.folder) if self._cs else []
+        if not saved:
+            return
+        last = saved[-1]
+        data, pdf = self._saved_data(last)
+        g = (data or {}).get("grade") or {}
+        when = last.name.replace("Extrinsic_", "")
+        when = f"{when[:4]}-{when[4:6]}-{when[6:8]} {when[9:11]}:{when[11:13]}" if len(when) >= 13 else when
+        what = (f"{data.get('camera', '?')} serial {data.get('serial', '?')}: "
+                f"{'PASS' if g.get('passed') else 'NOT PASSED'}") if data else "(the saved files can't be read)"
+        box = QMessageBox(self)
+        box.setWindowTitle("Already solved")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText(f"This camera was already solved and saved:\n{when}, {what}")
+        box.setInformativeText("Open the saved results, or solve again?  (Saving a new result moves this one "
+                               "into Superseded.)")
+        open_btn = box.addButton("Open results", QMessageBox.ButtonRole.AcceptRole) if data else None
+        pdf_btn = box.addButton("Open PDF", QMessageBox.ButtonRole.ActionRole) if pdf else None
+        redo_btn = box.addButton("Solve again", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(open_btn or redo_btn)
+        box.exec()
+        clicked = box.clickedButton()
+        if open_btn is not None and clicked is open_btn:
+            self._show_saved(last, data, pdf)
+        elif pdf_btn is not None and clicked is pdf_btn:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(pdf)))
+        elif clicked is redo_btn:
+            if self.solve_btn.isEnabled():
+                self._solve()
+            else:
+                self.status.emit("Pick the lens (and the camera at the top), then Solve.")
+
+    def _show_saved(self, folder: Path, data: dict, pdf):
+        """Show a saved result from its files: banner, setups, and each setup's saved overlay."""
+        self._res = None
+        self._loaded, self._report_pdf = (folder, data), pdf
+        g = data.get("grade") or {}
+        ok = bool(g.get("passed"))
+        pt = data.get("pointing_deg") or {}
+        lv = data.get("lever_arm_m") or {}
+        txt = f"<span style='font-size:16pt; font-weight:bold'>{'PASS' if ok else 'NOT PASSED'}</span>"
+        txt += f"<br>Saved {html.escape(folder.name)}"
+        if pt.get("pan_right") is not None:
+            txt += (f"<br>Pan {pt['pan_right']:.2f}°, tilt {pt.get('tilt_up', 0):.2f}°, roll {pt.get('roll_cw', 0):.2f}°"
+                    f"  ·  height {lv.get('up_above_pavement') or 0:.3f} m  ·  forward {lv.get('forward') or 0:.2f} m, "
+                    f"right {lv.get('right') or 0:.2f} m (rough, GPS)")
+        txt += "".join(f"<br>&bull; {html.escape(str(r))}" for r in g.get("reasons") or [])
+        cam, ser = str(data.get("camera", "")), str(data.get("serial", ""))
+        if (self.bar.camera and cam and cam != self.bar.camera) or (self.bar.serial and ser and ser != self.bar.serial):
+            txt += (f"<br><span style='color:#e0b050'>&#9888; Saved for {html.escape(cam)} serial {html.escape(ser)}; "
+                    f"the top bar says {html.escape(self.bar.camera)} serial {html.escape(self.bar.serial)}.</span>")
+        fg, bg = ("#3cc83c", "#1b3a1f") if ok else ("#ff6b6b", "#4a1c1c")
+        self.result.setText(txt)
+        self.result.setStyleSheet(f"color: {fg}; background: {bg}; border: 1px solid {fg}; border-radius: 6px; padding: 8px;")
+        self.result.show(); self._fit_top()
+        self.setups.clear()
+        for s in data.get("setups") or []:
+            why = f"{s.get('targets', 0)} targets" if s.get("passed") else ((s.get("problems") or ["not used"])[0])
+            self.setups.addItem(f"{'✓' if s.get('passed') else '✗'} {s.get('name', '')}  {why}")
+        self.details.setPlainText("\n".join([str(g.get("headline", ""))] + [f"  - {x}" for x in g.get("reasons") or []]
+                                            + [f"  ! {x}" for x in g.get("warnings") or []]))
+        self.status.emit(f"Opened the saved result {folder.name}.")
+        self._buttons()
+
+    def _open_report(self):
+        if self._report_pdf and Path(self._report_pdf).exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._report_pdf)))
+            self.status.emit(f"Opened {Path(self._report_pdf).name}")
 
     @property
     def van(self) -> str:
@@ -210,6 +313,7 @@ class ExtrinsicScreen(QWidget):
         if self._worker is not None and self._worker.isRunning():
             return
         self._cs, self._intr, self._res, self._folder_cam = None, None, None, ""
+        self._loaded, self._report_pdf = None, None
         self.folder.clear(); self.lens.clear(); self.setups.clear(); self.details.clear()
         self.result.hide(); self.lens_info.hide(); self.view.set_bgr(None)
         self._camera_text(); self._buttons()
@@ -285,6 +389,7 @@ class ExtrinsicScreen(QWidget):
         if isinstance(res, Exception):
             QMessageBox.critical(self, "Solve", str(res)); self.status.emit(str(res)); return
         self._res = res
+        self._loaded, self._report_pdf = None, None      # a new result: its report comes with Save
         from src.extrinsic.lens_check import warnings_text
         cks = self._lens_checks()
         res.lens_checks = cks                       # the office page shows the same checks
@@ -325,6 +430,8 @@ class ExtrinsicScreen(QWidget):
     # ── show ─────────────────────────────────────────────────────────────────
     def _show_setup(self, i):
         res = self._res
+        if res is None and self._loaded is not None:
+            self._show_saved_setup(i); return
         if res is None or i < 0 or i >= len(res.setups):
             return
         sr = res.setups[i]
@@ -348,6 +455,24 @@ class ExtrinsicScreen(QWidget):
         L += [f"  - {p}" for p in sr.problems]
         self.details.setPlainText("\n".join(L))
 
+    def _show_saved_setup(self, i):
+        folder, data = self._loaded
+        setups = data.get("setups") or []
+        if i < 0 or i >= len(setups):
+            return
+        s = setups[i]
+        pngs = sorted((folder / str(s.get("name", ""))).glob("*_targets.png"))
+        img = cv2.imread(str(pngs[0])) if pngs else (cv2.imread(s["photo"]) if s.get("photo") and os.path.exists(s["photo"]) else None)
+        self.view.set_bgr(img)
+        L = [f"{s.get('name')}   seed: {s.get('seed') or '-'}   photo: {s.get('photo')}"]
+        if s.get("pointing_deg"):
+            p = s["pointing_deg"]; lf = s.get("lever_forward_right_m") or [0, 0]
+            L.append(f"{s.get('targets')} targets ({s.get('tennis_balls_used')} balls), miss {s.get('miss_rms_mm')} mm RMS at "
+                     f"{s.get('range_m')} m.  Pan {p[0]:.2f}, tilt {p[1]:.2f}, roll {p[2]:.2f} deg.  "
+                     f"Forward {lf[0]:.2f}, right {lf[1]:.2f} m (VBS), up {s.get('up_above_pavement_m')} m above the pavement.")
+        L += [f"  - {p}" for p in s.get("problems") or []]
+        self.details.setPlainText("\n".join(L))
+
     # ── save ─────────────────────────────────────────────────────────────────
     def _save(self):
         res = self._res
@@ -357,13 +482,20 @@ class ExtrinsicScreen(QWidget):
         if not serial:
             QMessageBox.warning(self, "Save", "Type the camera serial at the top."); return
         from src.extrinsic.outputs import export_camera
+        from src.superseded import extrinsic_results, move_to_superseded
+        earlier = extrinsic_results(res.folder)          # moved to Superseded once the new result is written
         view = "0" if res.camera == "ROW" else ""
         out = export_camera(res, self.site, serial, self._intr.source, camera_view=view, intrinsic=self._intr)
+        self._report_pdf = next(iter(sorted(Path(out).glob("*_extrinsic.pdf"))), None)
         msg = f"Wrote:\n{out}"
+        moved = move_to_superseded(earlier, res.folder)
+        if moved:
+            msg += f"\n\nThe earlier result ({', '.join(p.name for p in moved)}) moved to Superseded."
         if not res.passed:
             msg += "\n\nNot passed: files are named NOT_PASSED_."
         QMessageBox.information(self, "Saved", msg)
         self.status.emit(f"Saved: {out}")
+        self._buttons()
 
     def _open_viewer(self):
         from src.viewer import open_viewer
@@ -375,3 +507,4 @@ class ExtrinsicScreen(QWidget):
         self.solve_btn.setEnabled(self._cs is not None and self._intr is not None and bool(self.bar.camera)
                                   and not busy)
         self.save_btn.setEnabled(self._res is not None and self._res.R_bc is not None and not busy)
+        self.report_btn.setEnabled(bool(self._report_pdf) and not busy)

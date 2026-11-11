@@ -68,6 +68,7 @@ class CameraBar(QWidget):
         row.addWidget(QLabel("Camera:")); row.addWidget(self.role_combo); row.addSpacing(SPACING)
         row.addWidget(QLabel("Serial:")); row.addWidget(self.serial_input); row.addWidget(self.serial_edit)
         row.addStretch(1)
+        self._row = row                 # set_actions(): the open tab's buttons go on the right
         lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(2)
         lay.addLayout(row); lay.addWidget(self.db_label)
 
@@ -125,7 +126,13 @@ class CameraBar(QWidget):
         else:
             self._lock_serial(bool(self._db_serial) and not self._unlocked)
 
-    # ── van and its database ────────────────────────────────────────────────
+    def set_actions(self, widgets: list) -> None:
+        """Buttons for the tab on show, on the right of the row (only that tab's are visible)."""
+        for w in widgets:
+            if w.parent() is not self:
+                self._row.addWidget(w)
+
+        # ── van and its database ────────────────────────────────────────────────
     def _van_typed(self, text: str) -> None:
         self.van_changed.emit(text.strip())
         self.db_res = None

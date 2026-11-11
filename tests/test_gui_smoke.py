@@ -98,3 +98,39 @@ def test_changing_camera_clears_both_tabs(win):
     b.role_combo.setEditText("FORWARDLEFT")
     assert s.folder_input.text() == "" and e.folder.text() == "" and e._intr is None and e.lens.text() == ""
     b.serial_input.clear(); b.role_combo.setEditText("")
+
+
+def test_extrinsic_buttons_in_top_bar_only_on_that_tab(win):
+    """2026-11-11: View photos, Solve, Save all formats, Open report sit in the top bar row."""
+    a = win.extrinsic.actions
+    assert a.parent() is win.bar
+    win.tabs.setCurrentWidget(win.extrinsic)
+    assert not a.isHidden()
+    win.tabs.setCurrentWidget(win.single)
+    assert a.isHidden()
+    assert not win.extrinsic.report_btn.isEnabled()          # nothing saved yet
+
+
+def test_extrinsic_opens_saved_results(win, tmp_path):
+    """A saved Extrinsic_<date> result shows from its files; Open report opens its PDF."""
+    import cv2
+    import numpy as np
+    e = win.extrinsic
+    d = tmp_path / "Extrinsic_20260401_100000"
+    (d / "20260404.102502").mkdir(parents=True)
+    cv2.imwrite(str(d / "20260404.102502" / "1_targets.png"), np.zeros((40, 60, 3), np.uint8))
+    (d / "ARAN99_ROW_88888888_extrinsic.pdf").write_bytes(b"%PDF")
+    data = {"camera": "ROW", "serial": "88888888",
+            "grade": {"passed": True, "headline": "PASS: good", "reasons": [], "warnings": []},
+            "pointing_deg": {"pan_right": 0.5, "tilt_up": -10.0, "roll_cw": 0.1},
+            "lever_arm_m": {"forward": 1.2, "right": 0.0, "up_above_pavement": 2.5},
+            "setups": [{"name": "20260404.102502", "passed": True, "targets": 22, "photo": "",
+                        "pointing_deg": [0.5, -10.0, 0.1], "lever_forward_right_m": [1.2, 0.0],
+                        "up_above_pavement_m": 2.5, "problems": []}]}
+    pdf = d / "ARAN99_ROW_88888888_extrinsic.pdf"
+    e._show_saved(d, data, pdf)
+    assert "PASS" in e.result.text() and e.setups.count() == 1 and e.report_btn.isEnabled()
+    e.setups.setCurrentRow(0)
+    assert "22 targets" in e.details.toPlainText()
+    e.new_camera()
+    assert not e.report_btn.isEnabled() and e._loaded is None
