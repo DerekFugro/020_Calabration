@@ -156,7 +156,9 @@ class ReportScreen(QWidget):
         self.board_dict_val       = QLabel("—")
 
         # ── Action buttons ─────────────────────────────────────────────────
-        self.save_button    = QPushButton("Save Report (YAML + PDF)")
+        # The buttons sit in the top bar row (OneCameraScreen.actions; Derek, 2026-11-11), like Load Extrinsic.
+        self.save_button    = QPushButton("Save all formats")
+        self.save_button.setToolTip("CAL_ YAML + PDF next to the photos, and every format in Calibration_<date>")
         self.save_button.setObjectName("primary_button")
         self.save_button.setFixedHeight(BUTTON_H)
         self.save_button.setEnabled(False)
@@ -254,13 +256,8 @@ class ReportScreen(QWidget):
         self.scroll_main_layout.addStretch()
 
         # Button row
-        self.button_layout = QHBoxLayout()
+        self.button_layout = QHBoxLayout()       # the buttons themselves are in the top bar row
         self.button_layout.setSpacing(SPACING)
-        self.button_layout.addWidget(self.new_cal_button)
-        self.button_layout.addWidget(self.view_button)
-        self.button_layout.addWidget(self.check_button)
-        self.button_layout.addStretch()
-        self.button_layout.addWidget(self.save_button)
 
         # Top-level layout
         self.main_layout = QVBoxLayout(self)

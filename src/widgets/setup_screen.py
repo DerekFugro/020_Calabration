@@ -77,7 +77,7 @@ class SetupScreen(QWidget):
         hint.setStyleSheet(dim); hint.setWordWrap(True)
         lay.addWidget(folder_group); lay.addWidget(hint); lay.addWidget(adv)
         lay.addStretch()
-        lay.addWidget(self.run_button); lay.addWidget(self.status_label)
+        lay.addWidget(self.status_label)          # Run Calibration sits in the top bar row (2026-11-11)
 
         self.browse_button.clicked.connect(self._browse)
         self.folder_input.textChanged.connect(self._update_run_button)

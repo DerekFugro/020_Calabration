@@ -15,7 +15,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl, Signal
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QMessageBox, QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget
 
 from src.output_writer import write_outputs
 from src.widgets.report_screen import ReportScreen
@@ -45,6 +45,36 @@ class OneCameraScreen(QWidget):
         self.report_screen.save_requested.connect(self._save)
         self.report_screen.new_calibration_requested.connect(self._back_to_setup)
         self.report_screen.check_requested.connect(self._check)
+
+        # Buttons in the top bar row, like Load Extrinsic (Derek, 2026-11-11); each shows only when it applies.
+        self._report_pdf = None
+        self.report_btn = QPushButton("Open report")
+        self.report_btn.setToolTip("The PDF of the result on screen (after Save, or an earlier saved result)")
+        self.report_btn.clicked.connect(self._open_report)
+        r, s = self.report_screen, self.setup_screen
+        self.actions = QWidget()
+        al = QHBoxLayout(self.actions); al.setContentsMargins(0, 0, 0, 0)
+        for b in (r.new_cal_button, r.view_button, r.check_button, s.run_button, r.save_button, self.report_btn):
+            al.addWidget(b)
+        self.stack.currentChanged.connect(lambda _i: self._sync_buttons())
+        self._sync_buttons()
+
+    def _sync_buttons(self) -> None:
+        """Which bar buttons apply: the report on screen, an earlier result opened, a PDF to open."""
+        on_report = self.stack.currentWidget() is self.report_screen
+        r = self.report_screen
+        r.new_cal_button.setVisible(on_report)
+        r.view_button.setVisible(on_report)
+        r.save_button.setVisible(on_report)
+        self.setup_screen.run_button.setVisible(not on_report)   # with a report: New Calibration / Check by re-running
+        if not on_report:
+            r.check_button.hide()
+        self.report_btn.setEnabled(bool(self._report_pdf) and Path(self._report_pdf).exists())
+
+    def _open_report(self) -> None:
+        if self._report_pdf and Path(self._report_pdf).exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._report_pdf)))
+            self.status.emit(f"Opened {Path(self._report_pdf).name}")
 
     # ── Run ───────────────────────────────────────────────────────────────────
     def _on_run_requested(self, folder: str, serial: str, board) -> None:
@@ -84,12 +114,16 @@ class OneCameraScreen(QWidget):
 
     def _show(self, run) -> None:
         self._run = run
+        loaded = getattr(run, "loaded_from", "")
+        pdf = Path(loaded).with_suffix(".pdf") if loaded else None
+        self._report_pdf = pdf if pdf is not None and pdf.exists() else None
         from src.van_scan import camera_from_name, van_from_path
         self.report_screen.set_loaded(getattr(run, "loaded_note", ""))
         self.report_screen.set_data(run.cal, run.board, run.folder,
                                     van=self.van or van_from_path(run.folder),
                                     camera=camera_from_name(self._role) or self._role, serial=self._serial)
         self.stack.setCurrentWidget(self.report_screen)
+        self._sync_buttons()
 
     # Used by Load Extrinsic: the lens just calibrated here.
     @property
@@ -150,6 +184,7 @@ class OneCameraScreen(QWidget):
             return                         # the bar is locked while a calibration runs
         self._run = None
         self._role = self._serial = ""
+        self._report_pdf = None
         self.setup_screen.clear_folder()
         self.stack.setCurrentWidget(self.setup_screen)
         self.setup_screen.set_busy(False)
@@ -225,6 +260,8 @@ class OneCameraScreen(QWidget):
                 note += f"\nRun log: {Path(run.run_log).name}"
             except Exception:  # noqa: BLE001 - the save itself already worked
                 pass
+        self._report_pdf = pdf_path
+        self._sync_buttons()
         QMessageBox.information(self, "Files Saved", note)
         self.status.emit(f"Saved next to the photos: {yaml_path.name}")
 

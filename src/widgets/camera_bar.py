@@ -53,10 +53,10 @@ class CameraBar(QWidget):
         self._last_cam = ""
 
         self.van_edit = QLineEdit(); self.van_edit.setPlaceholderText("e.g. ARAN69")
-        self.van_edit.setMaximumWidth(120); self.van_edit.setFixedHeight(INPUT_H)
+        self.van_edit.setFixedWidth(110); self.van_edit.setFixedHeight(INPUT_H)     # never squeezed by the buttons
         self.role_combo = QComboBox(); self.role_combo.setFixedHeight(INPUT_H); self.role_combo.setMinimumWidth(170)
         self.serial_input = QLineEdit(); self.serial_input.setFixedHeight(INPUT_H)
-        self.serial_input.setPlaceholderText("From the camera label"); self.serial_input.setMaximumWidth(170)
+        self.serial_input.setPlaceholderText("From the camera label"); self.serial_input.setFixedWidth(150)
         self.serial_edit = QPushButton("Edit"); self.serial_edit.setFixedHeight(INPUT_H)
         self.serial_edit.setToolTip("The serial came from the van database.  Edit only if the camera label says otherwise.")
         self.serial_edit.hide()

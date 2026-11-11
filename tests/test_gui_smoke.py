@@ -140,3 +140,22 @@ def test_version_in_window_title(win):
     """2026-11-11: the version shows beside the app name in the window frame."""
     from src.version import app_version
     assert win.windowTitle() == f"SurveyorCalibration   {app_version()}"
+
+
+def test_intrinsic_buttons_in_top_bar_like_extrinsic(win):
+    """2026-11-11: Load Intrinsic's buttons sit in the top bar row too, shown only on that tab;
+    New Calibration / View photos / Save only with a report on screen."""
+    one = win.single
+    r, s = one.report_screen, one.setup_screen
+    assert one.actions.parent() is win.bar and s.run_button.parent() is one.actions
+    win.tabs.setCurrentWidget(win.single)
+    assert not one.actions.isHidden() and win.extrinsic.actions.isHidden()
+    one.stack.setCurrentWidget(s)
+    assert r.save_button.isHidden() and r.new_cal_button.isHidden() and not s.run_button.isHidden()
+    assert r.save_button.text() == "Save all formats" and not one.report_btn.isEnabled()
+    one.stack.setCurrentWidget(r)
+    assert not r.save_button.isHidden() and not r.new_cal_button.isHidden() and not r.view_button.isHidden()
+    assert s.run_button.isHidden()                       # the top bar must not squeeze the van and serial boxes
+    one.stack.setCurrentWidget(s)
+    win.tabs.setCurrentWidget(win.extrinsic)
+    assert one.actions.isHidden() and not win.extrinsic.actions.isHidden()
