@@ -11,6 +11,15 @@ from fpdf import FPDF
 from src.output_writer import _ascii
 
 
+def _fit(pdf, text: str, width: float) -> str:
+    """Shorten text with '...' so it stays inside its table cell."""
+    if pdf.get_string_width(text) <= width:
+        return text
+    while text and pdf.get_string_width(text + "...") > width:
+        text = text[:-1]
+    return text.rstrip() + "..."
+
+
 def write_pdf(cam, data: dict, path: Path) -> None:
     pdf = FPDF(orientation="P", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=12)
@@ -54,8 +63,9 @@ def write_pdf(cam, data: dict, path: Path) -> None:
     pdf.set_font("Helvetica", "B", 9)
     pdf.cell(W, 5, "Setups", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "B", 7)
-    cols = [("Setup", 30), ("Pass", 10), ("Targets", 13), ("Miss mm", 14), ("Range m", 14),
-            ("Pan", 14), ("Tilt", 13), ("Roll", 13), ("Fwd m", 13), ("Right m", 13), ("Up m", 13), ("Seed", 26)]
+    # widths add up to the page width W (they were 196 mm on a 186 mm page; 2026-11-11)
+    cols = [("Setup", 27), ("Pass", 9), ("Targets", 12), ("Miss mm", 13), ("Range m", 13),
+            ("Pan", 12), ("Tilt", 12), ("Roll", 12), ("Fwd m", 12), ("Right m", 12), ("Up m", 12), ("Seed", 39)]
     for c, w in cols:
         pdf.cell(w, 4.5, c, border=1)
     pdf.ln()
@@ -66,7 +76,7 @@ def write_pdf(cam, data: dict, path: Path) -> None:
         vals = [s["name"], "yes" if s["passed"] else "NO", s["targets"], s["miss_rms_mm"], s["range_m"],
                 *pt3, *lv2, s["up_above_pavement_m"], s["seed"]]
         for (c, w), v in zip(cols, vals):
-            pdf.cell(w, 4.2, _ascii("" if v is None else str(v)), border=1)
+            pdf.cell(w, 4.2, _fit(pdf, _ascii("" if v is None else str(v)), w - 1.5), border=1)
         pdf.ln()
     for s in data["setups"]:
         for t in (s.get("problems") or []) + (s.get("old_click_checks") or []):

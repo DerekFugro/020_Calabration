@@ -110,14 +110,45 @@ def write_eop(sr, site, path: Path, K=None) -> None:
 GREEN, RED, ORANGE = (60, 200, 60), (80, 80, 255), (40, 180, 255)
 
 
+def _label_box(img, text, x, y, sc):
+    """(x, y, box) where the label would go: box = (x0, y0, x1, y1), kept inside the photo."""
+    fs, th = 0.55 * sc, max(1, int(round(1.4 * sc)))
+    (tw, tht), base = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, fs, th)
+    h, w = img.shape[:2]
+    x = min(max(0, int(x)), w - tw - 6)
+    y = min(max(tht + 6, int(y)), h - 4)
+    return x, y, (x - 3, y - tht - 5, x + tw + 3, y + base)
+
+
+def _hits(a, b, pad=2):
+    return not (a[2] + pad <= b[0] or b[2] + pad <= a[0] or a[3] + pad <= b[1] or b[3] + pad <= a[1])
+
+
+def _place(img, text, x, y, col, sc, taken, r0):
+    """Label beside its target where it doesn't cover another label or marker (2026-11-11:
+    close targets' labels used to overlap).  Tries right, left, above, below, then further out."""
+    tw = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.55 * sc, max(1, int(round(1.4 * sc))))[0][0]
+    tries = [(x + r0 * 1.8, y - r0 * 0.4), (x - r0 * 1.8 - tw - 6, y - r0 * 0.4),
+             (x - tw / 2, y - r0 * 2.0), (x - tw / 2, y + r0 * 2.9)]
+    for k in (1, 2, 3):
+        d = r0 * 1.4 * k
+        tries += [(x + r0 * 1.8, y - r0 * 0.4 - d), (x + r0 * 1.8, y - r0 * 0.4 + d),
+                  (x - r0 * 1.8 - tw - 6, y - r0 * 0.4 - d), (x - r0 * 1.8 - tw - 6, y - r0 * 0.4 + d)]
+    for tx, ty in tries:
+        lx, ly, box = _label_box(img, text, tx, ty, sc)
+        if not any(_hits(box, o) for o in taken):
+            break
+    else:
+        lx, ly, box = _label_box(img, text, *tries[0], sc)
+    taken.append(box)
+    _label(img, text, lx, ly, col, sc)
+
+
 def _label(img, text, x, y, col, sc):
     """Text in a dark box, so it reads on the white wall and the dark pavement."""
     fs, th = 0.55 * sc, max(1, int(round(1.4 * sc)))
     (tw, tht), base = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, fs, th)
-    x, y = int(x), int(y)
-    h, w = img.shape[:2]
-    x = min(max(0, x), w - tw - 6)
-    y = min(max(tht + 6, y), h - 4)
+    x, y, _box = _label_box(img, text, x, y, sc)
     cv2.rectangle(img, (x - 3, y - tht - 5), (x + tw + 3, y + base), (25, 25, 25), -1)
     cv2.rectangle(img, (x - 3, y - tht - 5), (x + tw + 3, y + base), col, max(1, int(sc)))
     cv2.putText(img, text, (x, y - 2), cv2.FONT_HERSHEY_SIMPLEX, fs, (255, 255, 255), th, cv2.LINE_AA)
@@ -137,6 +168,20 @@ def overlay(sr, site, K, D) -> np.ndarray | None:
     dropped = {p: why for p, why in (sol.dropped if sol else [])}
     miss = dict(zip(sol.ids, sol.loo_mm)) if sol is not None else {}
     found = {p: (x, y) for p, x, y, _k in (m.matches if m else [])}
+    if sol is not None:
+        head = (f"{sr.setup.name}   {'USED' if sr.passed else 'NOT USED'}   {sol.n_points} targets   "
+                f"miss {sol.loo_rms_mm:.1f} mm RMS")
+    else:
+        head = f"{sr.setup.name}   NOT USED"
+    lines = [head] + [p for p in sr.problems][:3]
+    # what labels must not cover: the heading lines and every target marker
+    taken = [_label_box(img, ln, 12 * sc, (34 + i * 30) * sc, sc * (1.25 if i == 0 else 1.0))[2]
+             for i, ln in enumerate(lines)]
+    if m is not None:
+        for pid, (px, py) in m.predicted.items():
+            cx, cy = found.get(pid, (px, py))
+            rr = r0 * 1.6
+            taken.append((int(cx - rr), int(cy - rr), int(cx + rr), int(cy + rr)))
     if m is not None:
         for pid, (px, py) in m.predicted.items():
             if pid in found and pid in used:
@@ -146,21 +191,15 @@ def overlay(sr, site, K, D) -> np.ndarray | None:
                 cv2.line(img, (int(x + r0 * 0.6), int(y)), (int(x + r0 * 1.6), int(y)), GREEN, t)
                 cv2.line(img, (int(x), int(y - r0 * 1.6)), (int(x), int(y - r0 * 0.6)), GREEN, t)
                 cv2.line(img, (int(x), int(y + r0 * 0.6)), (int(x), int(y + r0 * 1.6)), GREEN, t)
-                _label(img, f"{pid}  {miss.get(pid, 0):.0f} mm", x + r0 * 1.8, y - r0 * 0.4, GREEN, sc)
+                _place(img, f"{pid}  {miss.get(pid, 0):.0f} mm", x, y, GREEN, sc, taken, r0)
             elif pid in found:
                 x, y = found[pid]
                 cv2.drawMarker(img, (int(x), int(y)), RED, cv2.MARKER_TILTED_CROSS, int(r0 * 2.2), t)
                 why = dropped.get(pid, "left out")
-                _label(img, f"{pid} left out: {why.split(':')[0]}", x + r0 * 1.8, y - r0 * 0.4, RED, sc)
+                _place(img, f"{pid} left out: {why.split(':')[0]}", x, y, RED, sc, taken, r0)
             else:
                 cv2.circle(img, (int(px), int(py)), int(r0 * 0.8), ORANGE, t, cv2.LINE_AA)
-                _label(img, f"{pid} not found", px + r0 * 1.2, py - r0 * 0.4, ORANGE, sc)
-    if sol is not None:
-        head = (f"{sr.setup.name}   {'USED' if sr.passed else 'NOT USED'}   {sol.n_points} targets   "
-                f"miss {sol.loo_rms_mm:.1f} mm RMS")
-    else:
-        head = f"{sr.setup.name}   NOT USED"
-    lines = [head] + [p for p in sr.problems][:3]
+                _place(img, f"{pid} not found", px, py, ORANGE, sc, taken, r0)
     for i, ln in enumerate(lines):
         _label(img, ln, 12 * sc, (34 + i * 30) * sc, GREEN if sr.passed else RED, sc * (1.25 if i == 0 else 1.0))
     return img

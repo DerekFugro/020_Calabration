@@ -82,7 +82,7 @@ def _lens_size(intr) -> tuple[int, int, bool]:
     return int(round(2 * intr.K[0, 2])), int(round(2 * intr.K[1, 2])), False
 
 
-def _camera_checks(intr, camera: str, serial: str, folder_camera: str) -> list[tuple[str, str, str]]:
+def _camera_checks(intr, camera: str, serial: str, folder_camera: str, have_folder: bool = True) -> list[tuple[str, str, str]]:
     out = []
     cam, ser = (camera or "").strip(), (serial or "").strip()
     lc, ls = (getattr(intr, "camera", "") or ""), (intr.serial or "").strip()
@@ -106,8 +106,10 @@ def _camera_checks(intr, camera: str, serial: str, folder_camera: str) -> list[t
     else:
         out.append((OK, "The lens is for this camera", f"Both say {this}." if lc else
                     f"Serial {ser} (the lens file doesn't name the camera)."))
-    # the Old School folder
-    if not folder_camera:
+    # the Old School folder (none picked yet: nothing to say about it)
+    if not have_folder:
+        pass
+    elif not folder_camera:
         out.append((WARN, "The folder name doesn't say which camera this is",
                     f"Using {cam} from the top bar. The solve checks where the camera points."))
     elif folder_camera != cam:
@@ -120,7 +122,8 @@ def _camera_checks(intr, camera: str, serial: str, folder_camera: str) -> list[t
 
 def lens_checks(intr, setups, camera: str, serial: str, folder_camera: str = "") -> list[tuple[str, str, str]]:
     """(state, title, detail) in plain words, for the screen and the office page.
-    camera, serial: from the top bar.  folder_camera: the camera in the Old School folder name."""
+    camera, serial: from the top bar.  folder_camera: the camera in the Old School folder name.
+    No Old School setups yet (no folder picked): only the lens' own checks, no folder warnings."""
     out = []
     if intr is None:
         return [(WARN, "No lens file yet", "Run Load Intrinsic for this camera, or pick its lens file.")]
@@ -138,7 +141,9 @@ def lens_checks(intr, setups, camera: str, serial: str, folder_camera: str = "")
                     "You can use it for now. Redo the lens with this app when you can."))
 
     # 2. which camera: the top bar says; the lens and the Old School folder must agree
-    out += _camera_checks(intr, camera, serial, folder_camera)
+    out += _camera_checks(intr, camera, serial, folder_camera, have_folder=bool(setups))
+    if not setups:
+        return out              # photo size and dates need the Old School photos
 
     # 3. photo size
     size = old_school_size(setups)

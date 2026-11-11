@@ -385,3 +385,33 @@ def test_eops_beside_photos_like_the_old_program(tmp_path, monkeypatch):
     assert not (cam_dir / "20250619.151953" / "000001.EOP").exists()          # not solved: no other run's EOP left
     assert (cam_dir / "Superseded" / "20250619.151616" / "000001.EOP").read_text() == "old program eop"
     assert len(moved) == 2
+
+
+def test_lens_check_without_a_folder_has_no_folder_warnings():
+    """2026-11-11: before an Old School folder is picked, only the lens' own checks show."""
+    from src.extrinsic.lens_check import lens_checks
+    titles = [t for _, t, _ in lens_checks(_intr(), [], "ForwardLeft", "2000713", "")]
+    assert titles == ["The lens passed its own check", "The lens is for this camera"]
+
+
+def test_overlay_labels_do_not_overlap(tmp_path):
+    """2026-11-11: labels of close targets used to cover each other."""
+    import cv2
+    import numpy as np
+    from src.extrinsic import outputs
+    photo = tmp_path / "1.jpg"; cv2.imwrite(str(photo), np.full((1080, 1920, 3), 200, np.uint8))
+    pts = {"63": (300, 360), "66": (330, 352), "64": (300, 460), "67": (330, 452), "70": (620, 450), "73": (690, 462)}
+    m = SimpleNamespace(predicted=pts, matches=[(p, x, y, "disc") for p, (x, y) in pts.items()])
+    sol = SimpleNamespace(ids=list(pts), loo_mm=[5.0] * len(pts), dropped=[], n_points=len(pts), loo_rms_mm=5.0)
+    sr = SimpleNamespace(setup=SimpleNamespace(photo=str(photo), name="s1"), solve=sol, match=m, passed=True, problems=[])
+    boxes = []
+    real = outputs._label
+    monkey = lambda img, text, x, y, col, sc: (boxes.append(outputs._label_box(img, text, x, y, sc)[2]), real(img, text, x, y, col, sc))
+    outputs._label = monkey
+    try:
+        assert outputs.overlay(sr, None, np.eye(3), np.zeros(5)) is not None
+    finally:
+        outputs._label = real
+    labels = boxes[:len(pts)]
+    assert len(labels) == len(pts)
+    assert not any(outputs._hits(a, b, pad=0) for i, a in enumerate(labels) for b in labels[i + 1:])
