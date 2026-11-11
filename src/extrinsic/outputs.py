@@ -10,6 +10,10 @@ Per camera, into <camera folder>/Extrinsic_<date>/ :
   <stem>_extrinsic.pdf       report
   <stem>_CHECK.html          one page for the office: PASS/FAIL, checks, photos (open before loading)
 A camera that did not pass still gets its files, all named NOT_PASSED_…
+
+And, exactly as the old Old School program did (Derek, 2026-11-11: the office may still
+look for them there), <setup folder>/<photo id>.EOP beside each photo, passed or not, no
+prefix.  The EOP already there is moved to <camera folder>/Superseded/<setup>/ first.
 """
 
 from __future__ import annotations
@@ -231,8 +235,29 @@ def write_rwc(cam, serial: str, path: Path, camera_view: str = "") -> None:
     path.write_bytes((hdr + "\r\n" + ",".join(str(v) for v in row)).encode("ascii"))
 
 
+def write_eops_beside_photos(cam, site) -> tuple[list[Path], list[Path]]:
+    """EOPs exactly where and as the old Old School program wrote them (Derek, 2026-11-11: the
+    office may still look for them there): <setup folder>\\<photo>.EOP, passed or not, no prefix.
+    Every EOP already beside a photo of this camera (the old program's, or an earlier save) is
+    moved to <camera folder>\\Superseded\\<setup>\\ first, so no setup keeps another run's EOP.
+    Returns (written, moved)."""
+    from src.superseded import move_to_superseded
+    written, moved = [], []
+    for sr in cam.setups:
+        s = sr.setup
+        if not s.photo:
+            continue
+        target = Path(s.photo).with_suffix(".EOP")
+        old = [p for p in Path(s.folder).glob("*.EOP") if p.is_file()] if Path(s.folder).is_dir() else []
+        moved += move_to_superseded(old, cam.folder, sub=s.name)
+        if sr.solve is not None:
+            write_eop(sr, site, target, cam.K)
+            written.append(target)
+    return written, moved
+
+
 def export_camera(cam, site, serial: str, intrinsic_source: str, camera_view: str = "",
-                  out_root: str | None = None, intrinsic=None) -> Path:
+                  out_root: str | None = None, intrinsic=None, beside_photos: bool = False) -> Path:
     dt = datetime.now()
     out = Path(out_root or cam.folder) / f"Extrinsic_{dt:%Y%m%d_%H%M%S}"
     out.mkdir(parents=True, exist_ok=True)
@@ -280,4 +305,6 @@ def export_camera(cam, site, serial: str, intrinsic_source: str, camera_view: st
         write_pdf(cam, data, out / f"{stem}_extrinsic.pdf")
     except Exception as exc:  # noqa: BLE001
         (out / f"{stem}_pdf_error.txt").write_text(str(exc), encoding="utf-8")
+    if beside_photos:
+        cam.eops_beside_photos = write_eops_beside_photos(cam, site)
     return out

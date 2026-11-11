@@ -1,5 +1,6 @@
 """Tests for the Old School (extrinsic) solve."""
 from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
 
 import cv2
@@ -362,3 +363,25 @@ def test_extrinsic_pdf_is_written(tmp_path):
     out = tmp_path / "ARAN54_ROW_88888888_extrinsic.pdf"
     write_pdf(cam, data, out)
     assert out.exists() and out.read_bytes()[:4] == b"%PDF"
+
+
+def test_eops_beside_photos_like_the_old_program(tmp_path, monkeypatch):
+    """2026-11-11: <setup>/<photo>.EOP beside the photo, exact old name; the old one to Superseded."""
+    from types import SimpleNamespace
+    from src.extrinsic import outputs
+    monkeypatch.setattr(outputs, "write_eop", lambda sr, site, path, K=None: Path(path).write_text("new eop"))
+    cam_dir = tmp_path / "ROW"
+    setups = []
+    for name, solved in (("20250619.151616", True), ("20250619.151953", False)):
+        d = cam_dir / name; d.mkdir(parents=True)
+        (d / "000001.jpg").write_text("photo")
+        (d / "000001.EOP").write_text("old program eop")
+        setups.append(SimpleNamespace(setup=SimpleNamespace(folder=str(d), photo=str(d / "000001.jpg"), name=name),
+                                      solve=object() if solved else None))
+    cam = SimpleNamespace(folder=str(cam_dir), setups=setups, K=None)
+    written, moved = outputs.write_eops_beside_photos(cam, site=None)
+    assert [p.parent.name for p in written] == ["20250619.151616"]
+    assert (cam_dir / "20250619.151616" / "000001.EOP").read_text() == "new eop"
+    assert not (cam_dir / "20250619.151953" / "000001.EOP").exists()          # not solved: no other run's EOP left
+    assert (cam_dir / "Superseded" / "20250619.151616" / "000001.EOP").read_text() == "old program eop"
+    assert len(moved) == 2

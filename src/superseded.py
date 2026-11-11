@@ -38,14 +38,14 @@ def extrinsic_results(folder) -> list[Path]:
     return _list(folder, lambda c: c.is_dir() and _EXT_DIR.match(c.name))
 
 
-def move_to_superseded(paths, folder) -> list[Path]:
-    """Move each path into <folder>\\Superseded\\ (a name already there gets _2, _3 ...).
+def move_to_superseded(paths, folder, sub: str = "") -> list[Path]:
+    """Move each path into <folder>\\Superseded\\[<sub>\\] (a name already there gets _2, _3 ...).
     Returns where they went.  A file that can't be moved is left where it is."""
     paths = [Path(p) for p in paths if Path(p).exists()]
     if not paths:
         return []
-    dest = Path(folder) / FOLDER
-    dest.mkdir(exist_ok=True)
+    dest = Path(folder) / FOLDER / sub if sub else Path(folder) / FOLDER
+    dest.mkdir(parents=True, exist_ok=True)
     out = []
     for p in paths:
         target = dest / p.name

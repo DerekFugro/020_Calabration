@@ -485,9 +485,14 @@ class ExtrinsicScreen(QWidget):
         from src.superseded import extrinsic_results, move_to_superseded
         earlier = extrinsic_results(res.folder)          # moved to Superseded once the new result is written
         view = "0" if res.camera == "ROW" else ""
-        out = export_camera(res, self.site, serial, self._intr.source, camera_view=view, intrinsic=self._intr)
+        out = export_camera(res, self.site, serial, self._intr.source, camera_view=view, intrinsic=self._intr,
+                            beside_photos=True)
         self._report_pdf = next(iter(sorted(Path(out).glob("*_extrinsic.pdf"))), None)
         msg = f"Wrote:\n{out}"
+        written_eops, old_eops = getattr(res, "eops_beside_photos", ([], []))
+        msg += f"\n\nEOP beside each photo (as the old Old School program did): {len(written_eops)} written."
+        if old_eops:
+            msg += f"  {len(old_eops)} earlier EOP(s) moved to Superseded."
         moved = move_to_superseded(earlier, res.folder)
         if moved:
             msg += f"\n\nThe earlier result ({', '.join(p.name for p in moved)}) moved to Superseded."
