@@ -7,6 +7,40 @@
 >
 > Version 1 = Phases 1–5. Phases 6–9 are later; they are listed so the design
 > leaves room for them — do not build them early.
+>
+> **Phase 0 (calibration app start screen) comes first** and does not need any
+> capture hardware (Derek, 2026-11-13).
+
+## Phase 0 — Start screen, Home, van database choice (calibration app)
+**Complexity:** Moderate
+**Goal:** the app opens on the start screen described in the Instructions
+("Start screen"), with the van database status and tick box, and a Home button in
+the main window that leaves nothing behind.
+
+### Tasks
+1. `src/widgets/start_screen.py`: `StartScreen` — database status (background
+   lookup, reuse `src/widgets/db_worker.py` / `camera_db.lookup_cached`), "Use the van
+   database" tick box (ticked when found), the five choices. "Collect lens photos"
+   and "Collect Old School photos" greyed out until Capture exists (Phase 4 / 8).
+2. `main.py`: show the start screen first; `--folder <path>` skips it.
+3. Main window: remove the two placeholder Capture tabs; open on the chosen tab;
+   top bar follows the database choice (`CameraBar`: no lookup when off, usual
+   camera list, typed serial, label "van database: off"); run logs record it.
+4. **Home** button in the main window: same reset as a camera change on every tab;
+   disabled while running; asks before leaving an unsaved result; back to the start
+   screen (database status kept, no new lookup unless the van PC changed).
+5. Tests: start screen with database found / not found / unticked; Home clears every
+   tab (folder, lens, result, setups, report link); Home disabled while running.
+
+### Done when:
+- [ ] All tests pass.
+- [ ] Real check on Aran99-Server: start → Calibrate lens (ARAN54 ROW lens, database
+      unticked) → Camera position (solve ARAN54 ROW) → Home → Calibrate lens with
+      another camera: screenshots show nothing from the first camera; files written
+      are only the expected ones.
+- [ ] Derek has looked at the start screen and main window screenshots.
+
+---
 
 ## Phase 1 — Environment Setup + bench test
 **Complexity:** Moderate
@@ -148,10 +182,11 @@ Magewell PC before any GUI is written.
 | Inno Setup | 6.7.3 | installer |
 
 ### Tasks
-1. Calibration app: one "Collect photos…" button (in the app window's top bar)
-   that starts Capture with `QProcess.startDetached` (source run: same Python with
-   `-m src.capture`; installed: `SurveyorCapture.exe` next to `SurveyorCalibration.exe`),
-   passing `--van`. It must not import `src.capture`.
+1. Calibration app start screen: enable "Collect lens photos" (Phase 0 built it
+   greyed out). It starts Capture with `QProcess.startDetached` (source run: same
+   Python with `-m src.capture`; installed: `SurveyorCapture.exe` next to
+   `SurveyorCalibration.exe`), passing `--van`, and `--no-db` when "Use the van
+   database" is unticked. It must not import `src.capture`.
 2. `main.py`: add `--folder <path>` to open the calibration app on a folder (if
    missing). Capture's "Open in calibration app" uses it.
 3. `installer/SurveyorCalibration.spec`: add a second Analysis/EXE for

@@ -29,7 +29,8 @@ exactly what was grabbed.
 Version 1 (Phases 1–5) has exactly these features:
 1. **Camera list** — cameras for this van, by name, with their capture port, serial
    and size. Sources, in this order:
-   a. the van's ARAN SQL database (read only, through the existing `src/camera_db.py`);
+   a. the van's ARAN SQL database (read only, through the existing `src/camera_db.py`),
+      when "Use the van database" is ticked (see Start screen below);
    b. if the database can't be reached or has no cameras: an ARAN Settings XML file
       the user picks (e.g. `ARAN66_Settings_20260330.xml` from an end-of-day folder),
       read only;
@@ -125,10 +126,48 @@ One main window, `CaptureWindow` (`src/capture/window.py`):
   button (shows 3-2-1 big over the preview), last-photo thumbnail strip,
   "Open in calibration app", "Advanced…".
 - Status line for plain-English messages.
-Command line: `SurveyorCapture.exe [--van ARAN69] [--camera ROW] [--folder <path>]`.
+- Top bar also has a **"Use the van database"** tick box (as on the start screen);
+  started from the start screen it follows the choice made there (`--no-db`).
+Command line: `SurveyorCapture.exe [--van ARAN69] [--camera ROW] [--folder <path>] [--no-db]`.
 From source: `uv run python -m src.capture`.
-The calibration app gets one button, "Collect photos…", that starts Capture as a
-separate process (`QProcess.startDetached`); nothing else changes in the app.
+The calibration app starts Capture from its start screen ("Collect lens photos"), as
+a separate process (`QProcess.startDetached`), so a capture-card hang can never freeze
+the calibration app.
+
+## ⭐ Start screen (calibration app — Derek, 2026-11-13; build before Capture)
+The SurveyorCalibration app opens on a small start screen **every time**, instead of
+straight into the tabs:
+- **Van database status**, checked in the background when it opens (same rules as
+  `src/camera_db.py`: `<VAN>-SERVER` from the PC name, then this PC):
+  - found → "Van database: ARAN99 on ARAN99-SERVER, 2 cameras (ROW, ForwardRight)"
+    and a **Use the van database** tick box, **ticked**. Untick it to work on photos
+    from another van (e.g. ARAN54 photos on the ARAN99 bench): cameras then come from
+    the usual list and serials are typed. The app never unticks it by itself.
+  - not found → "No van database on this PC: cameras and serials are typed." (no box)
+- **No van, camera or serial boxes** on the start screen: those are set in the
+  window that opens (several cameras can be done in one sitting).
+- **Choices** (big buttons, plain words):
+  1. **Collect lens photos** → starts SurveyorCapture (separate program).
+  2. **Calibrate lens** → main window on Load Intrinsic.
+  3. **Collect Old School photos** → greyed out ("coming later") until Phase 8.
+  4. **Camera position** → main window on Load Extrinsic.
+  5. Small link **Boards…** → main window on Boards.
+- Choices 2, 4 and 5 open the **same main window** (tabs Load Intrinsic, Load
+  Extrinsic, Boards), so the lens made on Load Intrinsic is still used by Load
+  Extrinsic without loading it again. The placeholder tabs "Capture Intrinsic" and
+  "Capture Extrinsic" are removed.
+- The main window's top bar shows the database choice (e.g. "van database: off"),
+  and every run log records it.
+- **Home** button in the main window → back to the start screen. It clears
+  everything the way changing the camera does (folders, lens, results, setups,
+  photo views, report link; only the van stays). Disabled while a calibration or
+  solve runs. Asks first if a result on screen is not saved ("ROW has an unsaved
+  result. Leave anyway?"). Tested on real data: load a lens, solve an Old School
+  folder, Home, start again with another camera — nothing from the first camera may
+  show anywhere. If any state leaks that can't be cleared cleanly, Home closes and
+  rebuilds the main window instead (slower, always clean).
+- `--folder <path>` (from Capture's "Open in calibration app") skips the start
+  screen and opens the main window on Load Intrinsic with that folder.
 
 ## ⭐ Roles / permissions:
 None. Anyone signed in to the van PC can use it. No admin rights needed to run.
@@ -193,10 +232,11 @@ None. Anyone signed in to the van PC can use it. No admin rights needed to run.
   `port` field to it and to its existing SELECT (the only allowed change to
   camera_db; keep its tests passing). `VideoModuleName` says which PC holds the
   card (e.g. `ARAN69-Server`); show a warning if it isn't this PC.
-- **SurveyorCalibration app**: only through the photo folder and one launch button each
-  way ("Collect photos…" → Capture; "Open in calibration app" → `SurveyorCalibration.exe
-  --folder <path>` or `uv run python main.py --folder <path>`; add that small
-  `--folder` option to `main.py` if missing).
+- **SurveyorCalibration app**: only through the photo folder and one launch each way
+  (start screen "Collect lens photos" → Capture with `--van` and `--no-db` when the
+  database is unticked; "Open in calibration app" → `SurveyorCalibration.exe
+  --folder <path>` or `uv run python main.py --folder <path>`, which skips the start
+  screen; add that small `--folder` option to `main.py` if missing).
 - **Allowed shared imports (one way only):** Capture may import ONLY these
   existing modules: `src.camera_db`, `src.van_scan`, `src.version`, `src.styles`,
   `src.paths`, and — from the live-guidance phase on — `src.detector`, `src.board`,
