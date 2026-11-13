@@ -59,6 +59,14 @@ class OneCameraScreen(QWidget):
         self.stack.currentChanged.connect(lambda _i: self._sync_buttons())
         self._sync_buttons()
 
+    def unsaved(self) -> str:
+        """'' or a sentence: a new lens result on screen that was not saved."""
+        run = self._run
+        if run is None or getattr(run, "loaded_from", "") or getattr(run, "error", "") or self._report_pdf:
+            return ""
+        from src.van_scan import camera_from_name
+        return f"{camera_from_name(self._role) or self._role or 'This camera'} has a lens result that is not saved."
+
     def _sync_buttons(self) -> None:
         """Which bar buttons apply: the report on screen, an earlier result opened, a PDF to open."""
         on_report = self.stack.currentWidget() is self.report_screen
@@ -92,6 +100,7 @@ class OneCameraScreen(QWidget):
         inputs = {"van": van, "van_from": van_from,
                   "camera": camera_from_name(self._role) or self._role, "camera_from": "picked in the top bar",
                   "serial": serial, "serial_from": self.bar.serial_from,
+                  "van_database_used": self.bar.use_db,
                   "van_database": None if db is None else
                   {"where": db.where if not db.error else "", "error": db.error,
                    "cameras": {c.camera: c.serial for c in db.cameras.values()}},

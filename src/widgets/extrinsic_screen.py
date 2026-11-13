@@ -74,6 +74,7 @@ class ExtrinsicScreen(QWidget):
         self._folder_cam = ""      # camera in the Old School folder name
         self._loaded = None        # (Extrinsic_<date> folder, its saved data) when showing saved results
         self._report_pdf = None    # the PDF of the result on screen, once saved
+        self._saved = False        # the solved result on screen was saved
         self._intr = None          # Intrinsic
         self._res = None           # CameraResult
         self._worker = None
@@ -145,12 +146,13 @@ class ExtrinsicScreen(QWidget):
         # under the scrolling part, so they are always in view, and the top grows to show the
         # whole lens check when it can (_fit_top).
         self._top = top = QWidget(); tl = QVBoxLayout(top); tl.setContentsMargins(0, 0, 0, 0)
-        tl.addWidget(box); tl.addWidget(self.result); tl.addStretch(1)
+        tl.addWidget(box); tl.addStretch(1)
         top_scroll = QScrollArea(); top_scroll.setWidgetResizable(True)
         top_scroll.setFrameShape(QFrame.Shape.NoFrame); top_scroll.setWidget(top)
         top_scroll.setMinimumHeight(120)
         upper = QWidget(); ul = QVBoxLayout(upper); ul.setContentsMargins(0, 0, 0, 0)
         ul.addWidget(top_scroll, 1)
+        ul.addWidget(self.result)       # PASS / NOT PASSED always in view, not scrolled away (2026-11-13)
         self._split = split = QSplitter(Qt.Orientation.Vertical); split.setChildrenCollapsible(False)
         split.addWidget(upper); split.addWidget(lower)
         split.setStretchFactor(0, 0); split.setStretchFactor(1, 1); split.setSizes([380, 470])
@@ -278,6 +280,13 @@ class ExtrinsicScreen(QWidget):
         self.status.emit(f"Opened the saved result {folder.name}.")
         self._buttons()
 
+    def unsaved(self) -> str:
+        """'' or a sentence: a new camera position on screen that was not saved."""
+        res = self._res
+        if res is None or res.R_bc is None or self._saved:
+            return ""
+        return f"{res.camera or 'This camera'} has a camera position that is not saved."
+
     def _open_report(self):
         if self._report_pdf and Path(self._report_pdf).exists():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._report_pdf)))
@@ -365,7 +374,7 @@ class ExtrinsicScreen(QWidget):
         total = sum(sizes)
         if total <= 0:
             return
-        need = self._top.sizeHint().height() + 50          # + the Solve / Save row
+        need = self._top.sizeHint().height() + 20 + (self.result.sizeHint().height() if self.result.isVisible() else 0)
         top = max(200, min(need, int(share * total)))
         self._split.setSizes([top, total - top])
 
@@ -390,6 +399,8 @@ class ExtrinsicScreen(QWidget):
             QMessageBox.critical(self, "Solve", str(res)); self.status.emit(str(res)); return
         self._res = res
         self._loaded, self._report_pdf = None, None      # a new result: its report comes with Save
+        self._saved = False
+        res.van_database_used = self.bar.use_db
         from src.extrinsic.lens_check import warnings_text
         cks = self._lens_checks()
         res.lens_checks = cks                       # the office page shows the same checks
@@ -488,6 +499,7 @@ class ExtrinsicScreen(QWidget):
         out = export_camera(res, self.site, serial, self._intr.source, camera_view=view, intrinsic=self._intr,
                             beside_photos=True)
         self._report_pdf = next(iter(sorted(Path(out).glob("*_extrinsic.pdf"))), None)
+        self._saved = True
         msg = f"Wrote:\n{out}"
         written_eops, old_eops = getattr(res, "eops_beside_photos", ([], []))
         msg += f"\n\nEOP beside each photo (as the old Old School program did): {len(written_eops)} written."

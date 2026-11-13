@@ -87,7 +87,9 @@ class SetupScreen(QWidget):
 
     def _load_settings(self) -> None:
         s = QSettings(_ORG, _APP)
-        self.folder_input.setText(str(s.value(_KEY_FOLDER, "") or ""))
+        # The folder starts blank, like the camera (2026-11-13: no leftovers from the last camera);
+        # Browse still opens where the last one was.
+        self._last_folder = str(s.value(_KEY_FOLDER, "") or "")
         self._load_boards(str(s.value(_KEY_BOARD, AUTO_DETECT) or AUTO_DETECT))
         self._update_run_button()
 
@@ -134,7 +136,7 @@ class SetupScreen(QWidget):
     # ── Run ───────────────────────────────────────────────────────────────────
     def _browse(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Folder with the board photos",
-                                                  self.folder_input.text() or "")
+                                                  self.folder_input.text() or self._last_folder)
         if folder:
             self.folder_input.setText(folder)
 

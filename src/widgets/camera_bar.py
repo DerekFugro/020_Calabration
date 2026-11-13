@@ -43,8 +43,9 @@ class CameraBar(QWidget):
     changed = Signal()                 # camera or serial text changed (Run / Solve buttons)
     van_changed = Signal(str)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, use_db: bool = True) -> None:
         super().__init__(parent)
+        self.use_db = use_db            # start screen: "Use the van database" (2026-11-13)
         self.db_res = None              # camera_db.DbResult for the van, or None
         self._db_worker = None
         self._db_serial = ""            # serial the database gave for the chosen camera
@@ -139,6 +140,10 @@ class CameraBar(QWidget):
         self.set_db_cameras(None)
         self.apply_db(None, "")
         van = text.strip()
+        if not self.use_db:
+            self.db_label.setStyleSheet(_DIM)
+            self.db_label.setText("Van database: off (chosen on the start screen). Pick the camera; type the serial.")
+            return
         if not van:
             return
         from src.widgets.db_worker import DbWorker
@@ -224,7 +229,7 @@ class CameraBar(QWidget):
         typed = self.serial
         if res is None:
             self._db_serial = ""; self._lock_serial(False)
-            if self.db_label.text().startswith("Looking up") and self.van:
+            if (self.db_label.text().startswith("Looking up") and self.van) or not self.use_db:
                 return
             self.db_label.setText(""); return
         if row is None:

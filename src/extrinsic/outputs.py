@@ -222,6 +222,7 @@ def summary(cam, serial: str, intrinsic_source: str) -> dict:
         "created": datetime.now().isoformat(timespec="seconds"),
         "app_version": _app_version(),
         "run_id": getattr(cam, "run_id", ""),
+        "van_database_used": getattr(cam, "van_database_used", None),
         "per_target_detail": "<setup>/<photo>.targets.json (also beside each Old School photo)",
         "old_school_folder": cam.folder, "intrinsic": intrinsic_source,
         "grade": {"passed": cam.passed, "headline": cam.headline, "reasons": cam.reasons,

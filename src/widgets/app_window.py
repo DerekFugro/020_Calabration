@@ -1,10 +1,13 @@
 """app_window.py — the main window: one tab per step of the procedure.
 
   Load Intrinsic     one camera's lens photos -> grade -> save / export
-  Capture Intrinsic  the app takes the photos itself                (planned)
   Load Extrinsic     one camera's Old School photos -> camera angles + lever arms
-  Capture Extrinsic  the app runs the static setup itself           (planned)
   Boards             add, measure and print calibration boards
+
+Opened from the start screen (src/widgets/start_screen.py, Derek 2026-11-13), on the tab
+that was chosen, with the van database on or off as chosen there.  Home goes back to the
+start screen; the launcher then throws this window away, so nothing carries over.
+Photo capture is a separate program (docs/capture), not a tab.
 
 One camera at a time (Derek, 2026-11-03): the Whole van table was removed.
 The bar on top is shared (src/widgets/camera_bar.py): van, camera and serial label every
@@ -15,28 +18,18 @@ All screens report through the one status bar at the bottom.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QFrame, QLabel, QMainWindow, QScrollArea, QTabWidget, QVBoxLayout, QWidget,
+    QFrame, QMainWindow, QMessageBox, QPushButton, QScrollArea, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from src.styles import STYLESHEET_MAIN
 from src.widgets.one_camera_screen import OneCameraScreen
 
 
-def _planned(title: str, lines: list[str]) -> QWidget:
-    w = QWidget()
-    lay = QVBoxLayout(w)
-    head = QLabel(title); head.setStyleSheet("font-size: 14pt; font-weight: bold;")
-    body = QLabel("\n".join(lines)); body.setWordWrap(True)
-    body.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-    lay.addWidget(head); lay.addWidget(body, 1)
-    return w
-
-
 class AppWindow(QMainWindow):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, use_db: bool = True, on_home=None) -> None:
         super().__init__(parent)
+        self.on_home = on_home          # launcher: back to the start screen (None = no Home button)
         # Version in the title (2026-11-11): installed copy -> its VERSION file, git checkout -> the commit
         from src.version import app_version
         self.setWindowTitle(f"SurveyorCalibration   {app_version()}")
@@ -50,7 +43,7 @@ class AppWindow(QMainWindow):
 
         # Bar on top: van, camera, serial
         from src.widgets.camera_bar import CameraBar
-        self.bar = CameraBar()
+        self.bar = CameraBar(use_db=use_db)
         self.van_edit = self.bar.van_edit
 
         self.single = OneCameraScreen(self.bar)
@@ -62,19 +55,20 @@ class AppWindow(QMainWindow):
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self.single, "Load Intrinsic")
-        self.tabs.addTab(_planned("Capture Intrinsic — planned", [
-            "The app will drive the camera and take the board photos itself.",
-            "Live 3x3 grid: each area turns green once it has enough points and tilt.",
-            "Stops asking for photos when the grade passes.",
-        ]), "Capture Intrinsic")
         self.tabs.addTab(self.extrinsic, "Load Extrinsic")
-        self.tabs.addTab(_planned("Capture Extrinsic — planned", [
-            "The app runs the static setup: finds the targets in each photo "
-            "itself instead of clicking.",
-        ]), "Capture Extrinsic")
         boards_scroll = QScrollArea(); boards_scroll.setWidgetResizable(True)
         boards_scroll.setFrameShape(QFrame.Shape.NoFrame); boards_scroll.setWidget(self.boards_tab)
         self.tabs.addTab(boards_scroll, "Boards")
+        self._boards_page = boards_scroll
+
+        # Home: back to the start screen (2026-11-13)
+        self.home_btn = QPushButton("Home")
+        self.home_btn.setToolTip("Back to the start screen.  Everything here is cleared.")
+        self.home_btn.clicked.connect(self._home)
+        self.home_btn.setVisible(on_home is not None)
+        self.bar._row.insertWidget(0, self.home_btn)
+        from PySide6.QtCore import QTimer
+        self._busy_timer = QTimer(self); self._busy_timer.timeout.connect(self._sync_home); self._busy_timer.start(400)
 
         central = QWidget()
         lay = QVBoxLayout(central)
@@ -93,9 +87,41 @@ class AppWindow(QMainWindow):
         self.tabs.currentChanged.connect(self._tab_shown)
         self._tab_shown(self.tabs.currentIndex())
         # On the van, the PC name says which van it is (ARAN69-SERVER, ARAN69-ROW); shown so
-        # it can be corrected.
+        # it can be corrected.  Database off (another van's photos, 2026-11-13): left blank, so the
+        # van comes from the photo folder (…\ARAN54_2025-06-19\…) and files aren't named after this PC.
         from src.van_scan import van_from_computer
-        self.van_edit.setText(van_from_computer())
+        if use_db:
+            self.van_edit.setText(van_from_computer())
+        else:
+            self.van_edit.setPlaceholderText("from the photo folder")
+            self.bar._van_typed("")
+
+    # ── start screen / Home ─────────────────────────────────────────────────
+    def open_tab(self, tab: str, folder: str = "") -> None:
+        """Show the tab chosen on the start screen; a photo folder goes to Load Intrinsic."""
+        page = {"intrinsic": self.single, "extrinsic": self.extrinsic, "boards": self._boards_page}.get(tab, self.single)
+        self.tabs.setCurrentWidget(page)
+        if folder:
+            self.tabs.setCurrentWidget(self.single)
+            self.single.setup_screen.folder_input.setText(folder)
+
+    def busy(self) -> bool:
+        """A calibration, check or solve is running."""
+        ws = [getattr(self.single, "_worker", None), getattr(self.single, "_check_worker", None),
+              getattr(self.extrinsic, "_worker", None)]
+        return any(w is not None and w.isRunning() for w in ws)
+
+    def unsaved(self) -> str:
+        """'' or what would be lost by leaving, in plain words."""
+        out = [x for x in (self.single.unsaved(), self.extrinsic.unsaved()) if x]
+        return "  ".join(out)
+
+    def _sync_home(self) -> None:
+        self.home_btn.setEnabled(not self.busy())
+
+    def _home(self) -> None:
+        if self.on_home is not None:
+            self.on_home()
 
     def _tab_shown(self, _i):
         self.single.actions.setVisible(self.tabs.currentWidget() is self.single)

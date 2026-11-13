@@ -1,28 +1,40 @@
-"""main.py — Calibration application entry point."""
+"""main.py — Calibration application entry point.
 
+Opens on the start screen (src/widgets/start_screen.py, 2026-11-13).
+  --folder <photo folder>   skip the start screen: Load Intrinsic with that folder
+                            (SurveyorCapture's "Open in calibration app" uses this).
+"""
+
+import argparse
 import multiprocessing
 import sys
 
 from PySide6.QtWidgets import QApplication
 
 from src.styles import build_dark_palette
-from src.widgets.app_window import AppWindow
 
 APP_NAME = "SurveyorCalibration"
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser(prog=APP_NAME)
+    ap.add_argument("--folder", default="", help="photo folder: open Load Intrinsic on it, no start screen")
+    args, qt_args = ap.parse_known_args(sys.argv[1:])
     from src.paths import migrate_old_name, seed_data
     migrate_old_name()
     seed_data()
-    app = QApplication(sys.argv)
+    app = QApplication([sys.argv[0]] + qt_args)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("SidewalkProfiler")
     app.setPalette(build_dark_palette())
     app.setStyle("Fusion")
 
-    window = AppWindow()
-    window.show()
+    from src.widgets.launcher import Launcher
+    launcher = Launcher()
+    if args.folder:
+        launcher.open_main("intrinsic", folder=args.folder, use_db=True)
+    else:
+        launcher.show()
 
     return app.exec()
 
