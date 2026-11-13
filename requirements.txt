@@ -5,3 +5,4 @@ pyyaml>=6.0
 pytest>=9.0.3
 pyproj>=3.6
 pyodbc>=5.0
+comtypes>=1.4.17; sys_platform == "win32"
