@@ -74,3 +74,23 @@ def test_old_folder_without_dots_files(tmp_path):
         f.unlink()
     run = load_saved(y)
     assert run.cal.points_used == [] and "No .dots.json files here" in run.loaded_note
+
+
+def test_saved_chessboard_without_a_name_finds_the_library_board():
+    """Bug 2026-11-14 (GOX): chessboard results are saved by squares + cell size only, so
+    re-opening found no board and the report crashed (cfg.is_dots on None)."""
+    from src.load_saved import _board
+    b = _board({"squares_x": 12, "squares_y": 8, "cell_width_mm": 76.39, "cell_height_mm": 76.39})
+    assert b is not None and b.name == "Chessboard 12x8" and not b.is_dots
+    other = _board({"squares_x": 9, "squares_y": 6, "cell_width_mm": 25.0, "cell_height_mm": 25.0})
+    assert other is not None and (other.squares_x, other.squares_y, other.cell_width_mm) == (9, 6, 25.0)
+    assert _board({}) is None and _board({"name": "ikea_road"}).is_dots
+
+
+def test_report_board_box_survives_no_board():
+    from PySide6.QtWidgets import QApplication
+    QApplication.instance() or QApplication([])
+    from src.widgets.report_screen import ReportScreen
+    r = ReportScreen()
+    r._update_board(None)
+    assert "not known" in r.board_squares_val.text()

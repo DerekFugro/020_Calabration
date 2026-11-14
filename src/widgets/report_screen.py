@@ -527,7 +527,15 @@ class ReportScreen(QWidget):
             if visible:
                 self.dist_val_labels[i].setText(f"{flat[i]:.6f}")
 
-    def _update_board(self, cfg: BoardConfig) -> None:
+    def _update_board(self, cfg: BoardConfig | None) -> None:
+        if cfg is None:                                   # never crash the report over the board box
+            for k, v in ((self.board_squares_key, self.board_squares_val), (self.board_cell_key, self.board_cell_val),
+                         (self.board_marker_key, self.board_marker_val)):
+                v.setText("—")
+            self.board_squares_key.setText("Board:")
+            self.board_squares_val.setText("not known (not in the board library)")
+            self.board_dict_val.setText("—")
+            return
         if cfg.is_dots:
             self.board_squares_key.setText("Board:")
             self.board_squares_val.setText(cfg.name)

@@ -31,9 +31,31 @@ def _dots_files(folder: Path) -> list[Path]:
     return out
 
 
-def _board(name: str):
+def _board(block: dict):
+    """The board a saved result used.  Dot boards are saved by name.  Chessboards are saved
+    by squares and cell size only (no name), so match those against the library; failing
+    that, rebuild the chessboard from the saved numbers.  (Bug 2026-11-14: every saved
+    chessboard result re-opened with no board and the report crashed.)"""
+    from src.board import BoardConfig
     from src.boards import list_boards
-    return next((b for b in list_boards() if b.name == name), None)
+    block = block or {}
+    boards = list_boards()
+    name = block.get("name", "")
+    if name:
+        b = next((b for b in boards if b.name == name), None)
+        if b is not None:
+            return b
+    try:
+        sx, sy = int(block["squares_x"]), int(block["squares_y"])
+        cw = float(block.get("cell_width_mm", 0)); ch = float(block.get("cell_height_mm", cw))
+    except (KeyError, TypeError, ValueError):
+        return None
+    for b in boards:
+        if (not b.is_dots and (b.squares_x, b.squares_y) == (sx, sy)
+                and abs(b.cell_width_mm - cw) < 0.05 and abs(b.cell_height_mm - ch) < 0.05):
+            return b
+    return BoardConfig(squares_x=sx, squares_y=sy, cell_width_mm=cw, cell_height_mm=ch,
+                       name=f"Chessboard {sx}x{sy} (from the saved file)")
 
 
 def load_saved(yaml_path: str | Path):
@@ -54,7 +76,7 @@ def load_saved(yaml_path: str | Path):
     res = d.get("image_resolution") or {}
     size = (int(res.get("width", 0)), int(res.get("height", 0)))
     run = FolderRun(folder=str(folder))
-    run.board = _board((d.get("board") or {}).get("name", ""))
+    run.board = _board(d.get("board") or {})
     run.board_note = "loaded from the saved calibration"
 
     run_id = d.get("run_id", "") or ""
