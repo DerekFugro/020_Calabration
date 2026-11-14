@@ -9,6 +9,20 @@
 > `F:\Sidewalk\002_App\SidewalkProfilier\075_CalabrationApps\020_Calabration`.
 > Read `docs/capture/CONTEXT.md` first.
 
+> **Status 2026-11-14 — built, with these changes agreed with Derek since this spec:**
+> - **Folders:** the folder picked is the *base*; each camera session gets a subfolder
+>   `<Camera>_<Serial>_<YYYYMMDD_HHMMSS>` for its photos and log.
+> - **GOX cameras on the BitFlow CoaXPress card** are supported (Phase 9,
+>   `src/capture/bitflow.py`). For them Capture switches the FrameStart trigger off while
+>   it has the camera and puts it back on close (crash-safe); it refuses while ARAN's FR
+>   Video Service runs. Exposure and frame rate are never changed.
+> - **Auto grab** (Smart: board found + still + new spot; Timer: every N s) for one person
+>   holding the board. Uses the calibration app's own board finder.
+> - **Hand-over:** "Open in calibration app" passes `--camera` too; the calibration app
+>   picks that camera and keeps the folder.
+> - The 12x8 chessboard has its own finder in the calibration app (`src/marker_finder.py`).
+> Results: `bench_results.md`, `field_test_v1.md`. Lines below marked *(changed)* follow these.
+
 ## ⭐ Project name:
 **SurveyorCapture** — the photo collection program of the SurveyorCalibration app
 (called 020_Calabration until 2026-11-09; the repo and code folder keep that name).
@@ -38,8 +52,9 @@ Version 1 (Phases 1–5) has exactly these features:
 2. **Live preview** of the chosen camera.
 3. **Grab** a full-size photo three ways: a big Grab button, the Space bar, and a
    3-second countdown (so one person can hold the board).
-4. **Save** as high-quality JPEG (quality 95) into a folder the user picks
-   (remembered between sessions). File names are date-time stamped
+4. **Save** as high-quality JPEG (quality 95) into a session subfolder
+   `<Camera>_<Serial>_<date>_<time>` of the base folder the user picks (remembered
+   between sessions) *(changed 2026-11-14)*. File names are date-time stamped
    (`<Camera>_<YYYYMMDD_HHMMSS_mmm>.jpg`). Never overwrite: if a name exists, add
    `_2`, `_3`, ….
 5. **Capture log** beside the photos, `CAPTURE_<YYYYMMDD_HHMMSS>.json`, one per
@@ -69,11 +84,14 @@ Version 1 (Phases 1–5) has exactly these features:
 - **Never write to the database.** Read only (`ApplicationIntent=ReadOnly`,
   `readonly=True`, SELECT only) — reuse `src/camera_db.py` as is.
 - **Never change camera or capture-card settings** (exposure, gain, EDID, input
-  source, firmware, LED). Only open, read frames, close.
+  source, firmware, LED). Only open, read frames, close. *(Changed 2026-11-14, GOX only:
+  the FrameStart trigger is switched off while Capture has the camera and always put
+  back.)*
 - No calibration, grading or solving inside Capture (the calibration app does that).
-- Not in v1: live board guidance, auto-grab, extrinsic (Old School) guidance,
-  CoaXPress cameras, Magewell SDK signal status. These are later phases — keep the
-  design open for them, don't build them early.
+- Not in v1: live board guidance, extrinsic (Old School) guidance, Magewell SDK signal
+  status. These are later phases — keep the design open for them, don't build them
+  early. *(Auto grab and CoaXPress/GOX cameras were built early at Derek's request,
+  2026-11-14.)*
 - No video recording; single still photos only.
 
 ## ⭐ Primary user / persona:
@@ -119,8 +137,9 @@ One main window, `CaptureWindow` (`src/capture/window.py`):
   label ("from the van database" / "from Windows ports"), "Try again".
 - Centre: live preview, scaled to fit, never stretched (keep aspect ratio). Under it:
   camera, port, serial, expected size, delivered size, frames/s.
-- Bottom: save-folder picker, photo count, big **Grab** button, **Countdown**
-  button (shows 3-2-1 big over the preview), last-photo thumbnail strip,
+- Bottom: base-folder picker, photo count, big **Grab** button, **Countdown**
+  button (shows 3-2-1 big over the preview), **Auto grab** with mode (Smart / Timer),
+  interval (Timer) and **Target** *(added)*, last-photo thumbnail strip,
   "Open in calibration app", "Advanced…".
 - Status line for plain-English messages.
 - Top bar also has a **"Use the van database"** tick box (as on the start screen);
@@ -230,12 +249,12 @@ None. Anyone signed in to the van PC can use it. No admin rights needed to run.
 - **SurveyorCalibration app**: only through the photo folder and one launch each way
   (start screen "Collect lens photos" → Capture with `--van` and `--no-db` when the
   database is unticked; "Open in calibration app" → `SurveyorCalibration.exe
-  --folder <path>` or `uv run python main.py --folder <path>`, which skips the start
-  screen; add that small `--folder` option to `main.py` if missing).
+  --folder <session folder> --camera <name>` or `uv run python main.py --folder … --camera …`,
+  which skips the start screen and picks the camera *(changed: --camera added)*).
 - **Allowed shared imports (one way only):** Capture may import ONLY these
   existing modules: `src.camera_db`, `src.van_scan`, `src.version`, `src.styles`,
-  `src.paths`, and — from the live-guidance phase on — `src.detector`, `src.board`,
-  `src.boards`, `src.coverage`. Nothing in `src/` outside `src/capture` may import
+  `src.paths`, and — for Auto grab and the live-guidance phase — `src.detector`,
+  `src.dot_detector`, `src.board`, `src.boards`, `src.coverage`. Nothing in `src/` outside `src/capture` may import
   `src.capture` (except the one launch button, which starts a process and does not
   import it). A test enforces both rules.
 
@@ -248,10 +267,10 @@ None. Anyone signed in to the van PC can use it. No admin rights needed to run.
 
 ## ⭐ Version control and environment:
 Git (`DerekFugro/020_Calabration`, branch `main`), uv with `requirements.txt`
-(no pyproject). Commit with
-`git -c user.email=dpescod@fugro.com commit -F ForClaude\commit_msg.txt`, then
-push. Commit trailers as instructed by the session. Preserve existing line endings
-(LF) when editing.
+(no pyproject). Commit with `git commit -F <message file>` (the PC's git identity is
+Derek's `dapfromcanada` account), then push. Commit trailers as instructed by the
+session. Preserve existing line endings (LF) when editing. *(Changed 2026-11-14; see
+`CLAUDE.md`.)*
 
 ## ⭐ Preferred tech stack:
 | Tool | Version | Why |
@@ -285,7 +304,7 @@ of any size, can simulate busy / no signal / wrong size). All logic tests use
 no-signal colour bars refused, name→index matching, size fallback and mismatch warning,
 never-overwrite names, log contents and append, busy handling, the import-boundary
 rule, 1920×1080 and 3840×2160 and an odd size (e.g. 2448×2048). The existing 216
-tests must still pass.
+tests must still pass. *(2026-11-14: 300 tests, including a fake BitFlow module.)*
 
 ## ⭐ Preferences and tradeoffs:
 Simple, clear, safe. Plain English, grade 9, metric. Warn, never refuse (except

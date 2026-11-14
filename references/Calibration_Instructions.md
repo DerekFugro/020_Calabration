@@ -9,6 +9,9 @@
 >    ChArUco board, but `src/detector.py` uses `cv2.findChessboardCornersSB`
 >    (falling back to `cv2.findChessboardCorners`) with CLAHE and a white
 >    padding border.  The ArUco module is not used in the calibration path.
+>    *(2026-11-14: when both OpenCV finders miss, the 12x8 board's own finder,
+>    `src/marker_finder.py`, uses its square-in-square corner markers — see
+>    references/BoardTrueSize.md.)*
 > 2. **The board cells are square, not rectangular.**  Re-measured
 >    2026-08-11 at 3.000 in × 3.000 in (76.2 mm).  The earlier non-square
 >    76.46 × 75.99 mm figures, derived from an overall 36.125 in × 23.9375 in

@@ -21,8 +21,14 @@ cardboard, with four square-in-square fiducial markers in the corner cells.
 `H:\Camera Calibration Files\Pave\TDR054S-C_234500499_260811190327_image24.png`:
 locks on at 11 x 7 and returns 77 corners.
 
-The corner fiducials are **not used**. Detection is plain chessboard; the ArUco
-module is never called (see `src/detector.py`).
+Detection is plain chessboard; the ArUco module is never called (see `src/detector.py`).
+**Update 2026-11-14:** the corner fiducials are now used, as a fallback only. On 4K GOX
+photos OpenCV's chessboard finders miss about half of the views, so the board has its own
+finder (`src/marker_finder.py`) that anchors on the four square-in-square markers. It
+returns 73 of the 77 corners (the 4 next to the markers are not true chessboard corners:
+the top-left square is white, so two markers sit where a white square would be). Where
+both can read a photo, its corners match OpenCV's to a median 0.001 px. Cell pitch and
+everything below are unchanged.
 
 ## 2. Measurement of record
 

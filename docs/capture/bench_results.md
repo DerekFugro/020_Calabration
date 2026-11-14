@@ -73,3 +73,14 @@ FR Video Service was stopped; no program had the board open.
   Capture must only open boards Windows lists (`Get-PnpDevice`: "BitFlow Claxon-CXP4").
 - BitFlow ships `BFModule` wheels for Python 3.8/3.10/3.12 (per DP_CXP README); this
   app runs on 3.12.
+
+## The 12x8 board on 4K GOX photos (2026-11-14)
+OpenCV's chessboard finders (SB and classic) read only about half of Derek's GOX photos
+of the 12x8 board, including clean, flat, fully visible ones. Ruled out: finder settings,
+the board's turn, OpenCV version (4.13 and 5.0 identical). The board's corner markers
+(two sit where a white square would be) break the chessboard pattern at 4 corners.
+Fix: the board's own finder `src/marker_finder.py` (fallback only). 50 timer photos: 25
+read by OpenCV, 38 with the board finder; its corners match OpenCV's to a median 0.001 px
+where both read a photo. Also found: a detection with corners in the added white border
+crashed the whole run (now "not found").
+

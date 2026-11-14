@@ -33,12 +33,12 @@ the main window that leaves nothing behind.
    tab (folder, lens, result, setups, report link); Home disabled while running.
 
 ### Done when:
-- [ ] All tests pass.
-- [ ] Real check on Aran99-Server: start → Calibrate lens (ARAN54 ROW lens, database
+- [x] All tests pass.
+- [x] Real check on Aran99-Server (2026-11-13, `_check\phase0_check.py`): start → Calibrate lens (ARAN54 ROW lens, database
       unticked) → Camera position (solve ARAN54 ROW) → Home → Calibrate lens with
       another camera: screenshots show nothing from the first camera; files written
       are only the expected ones.
-- [ ] Derek has looked at the start screen and main window screenshots.
+- [x] Derek uses the start screen and main window on ARAN99 (2026-11-14).
 
 ---
 
@@ -79,9 +79,11 @@ Magewell PC before any GUI is written.
    before Phase 2.
 
 ### Done when:
-- [ ] `comtypes` installed; `requirements.txt` updated; existing tests pass.
+- [x] `comtypes` installed; `requirements.txt` updated; existing tests pass.
 - [ ] `bench_results.md` answers all four questions with real output from ARAN99.
-- [ ] Derek has read the bench results and said "proceed".
+      *Partly: size behaviour and no-signal bars answered; which DSHOW index is which
+      input, busy behaviour and pixel formats need a camera / a van (field_test_v1.md).*
+- [x] Derek has read the bench results and said "proceed".
 
 ---
 
@@ -124,9 +126,9 @@ Magewell PC before any GUI is written.
    allowed `src.*` modules; nothing outside `src/capture` imports `src.capture`.
 
 ### Done when:
-- [ ] All new tests and the existing 216 pass on DPDEV (no capture card).
-- [ ] Boundary test passes.
-- [ ] No GUI code yet; nothing in the calibration app changed except the optional
+- [x] All new tests and the existing 216 pass (run on ARAN99; no card needed).
+- [x] Boundary test passes.
+- [x] No GUI code yet; nothing in the calibration app changed except the optional
       `port` field in camera_db.
 
 ---
@@ -162,11 +164,11 @@ Magewell PC before any GUI is written.
    (`QT_QPA_PLATFORM=offscreen`), grab 3 photos, check files and log.
 
 ### Done when:
-- [ ] `uv run python -m src.capture` opens the window on DPDEV with the fake/no
-      camera without errors.
-- [ ] Offscreen GUI test passes; all tests pass.
+- [x] `uv run python -m src.capture` opens the window (checked on ARAN99) without errors.
+- [x] Offscreen GUI test passes; all tests pass.
 - [ ] Human review of the layout (screenshot at 1280×720 and full screen) — Derek
-      says it's clear for field crew.
+      says it's clear for field crew. *Derek has used it live on the GOX (2026-11-14);
+      no formal layout sign-off yet.*
 
 ---
 
@@ -197,10 +199,13 @@ Magewell PC before any GUI is written.
    buttons launch each other.
 
 ### Done when:
-- [ ] Setup.exe installs both; both start; launch buttons work both ways.
-- [ ] Removing `src/capture` (try on a scratch branch) leaves the calibration app
+- [x] Setup.exe installs both; both start; launch buttons work both ways (ARAN99,
+      2026-11-14, installed copy, screenshots).
+- [x] Removing `src/capture` (scratch worktree, 2026-11-14) leaves the calibration app
       starting and its tests passing (only the launch button reports Capture missing).
-- [ ] All tests pass.
+- [x] All tests pass.
+- Note: the installed copy on ARAN99 is older than today's code (no GOX module, no Auto
+  grab, no board finder). Rebuild only when Phase 5 is done (Derek, 2026-11-14).
 
 ---
 
@@ -222,6 +227,15 @@ Magewell PC before any GUI is written.
 - [ ] Derek signs off v1. Commit, build Setup.exe, GitHub release (ask first).
 
 ---
+
+## Added 2026-11-14 — Auto grab (Derek's request, before Phase 6)
+For one person holding the board. **Smart:** saves the exact frame looked at when the
+whole board is found (the calibration app's finder), held still for two looks, and in a
+new place / size / tilt / turn compared with every saved photo; big text on the picture;
+stops at a Target. **Timer:** saves every N seconds (default 2) whatever is in it.
+`src/capture/autograb.py`, tests in `tests/test_capture_autograb.py`. Replayed on 95 GOX
+photos: kept 29 (the app used 31); Timer used for a 50-photo GOX set (38 usable with the
+board finder, PASS). Phase 6 can reuse its board finding for the live coverage display.
 
 ## Phase 6 — Live board guidance (later)
 **Complexity:** Complex

@@ -9,8 +9,10 @@ installed program and the screen looked at (screenshots in `E:\SurveyorCalibrati
 | ARAN99-SERVER (bench) | 2026.11.14-1699e79 | 2026-11-14 03:06, Setup.exe, no restart | Claude, Derek OK'd the admin prompt |
 | ARAN69-SERVER | — | — | — |
 
-Note: the "SurveyorCapture is not installed" message (commit 5c8b007) is in the source,
-not yet in the installed build. Rebuild Setup.exe before the van install.
+Note: the installed build is older than the source. Since it: the "SurveyorCapture is
+not installed" message, GOX (BitFlow) support, base folder + session subfolders,
+`--camera` hand-over, Auto grab, the 12x8 board finder, several crash fixes. Derek
+(2026-11-14): rebuild and install only after all tests here are complete.
 
 ## Done on ARAN99 (2026-11-14, no cameras plugged in)
 | Step | Result |
@@ -22,6 +24,17 @@ not yet in the installed build. Rebuild Setup.exe before the van install.
 | 5b. Database unreachable (van ARAN54, no ARAN54-SERVER) | PASS. Message: could not read the van database (not on network / not allowed), using Windows inputs. Same 3 inputs. **Bug found and fixed:** the long message widened the window to 1664 px; it now wraps (test added). |
 | Calibration app with Capture removed (scratch copy) | PASS. 242 tests pass; main window opens; button says Capture is not installed. |
 | Built app OpenSSL | Fixed: build took Git's libssl and the app crashed opening the main window. Spec now uses Python's copy and stops if any DLL comes from Git. |
+
+## GOX on the BitFlow card, ARAN99 (2026-11-14, from source, not the installed build)
+| Step | Result |
+|------|--------|
+| Live picture | PASS. "Right" (GOX-16205C-CXP 000312) live in Capture, 3840x2160, 36 frames/s, colours right. |
+| Trigger | PASS. Camera found with FrameStart trigger On (Line7); Off while Capture has it (frames at once); On again after close. Hard kill while open: camera left Off, restore file kept; next open + close put it back On. |
+| FR Video Service running | Refusal tested with a fake (service stopped on the bench). **Still to check for real.** |
+| Lens loop, by hand | PASS. Derek's 95 photos (G:\Right_312_20261114_063145): PASS, 31 used, RMS 0.45 px, lens steady 3 mm at 10 m. |
+| Lens loop, Auto grab Timer | PASS. 50 photos (G:\Right_312_20261114_090750), every 2 s: with the board finder 38 used, RMS 0.34 px, lens steady 2.4 mm. |
+| Auto grab Smart | Worked mechanically; first try mostly "BOARD NOT FOUND" because OpenCV missed the board. Fixed by the 12x8 board finder; **not yet retried live**. |
+| Bugs found and fixed | Capture saved into the picked folder (now a session subfolder); calibration app cleared the handed-over folder when the camera was picked; Auto-detect missed the chessboard on 4K photos; re-opening a saved chessboard result crashed; a detection with corners outside the photo crashed the run. |
 
 ## Still to do (needs cameras / a van)
 Plug in before starting: a camera (or any HDMI source) on Magewell **00-0**, and the
@@ -42,6 +55,10 @@ POS LV if it is part of the same session.
    **Ask Derek before this one** — it touches a live collection.
 5. **Pixel formats** (Phase 1 question 4). Optional; Phase 7 can read them through the
    Magewell SDK.
+
+6. **GOX, Smart Auto grab** with the board finder: does it save without help?
+7. **GOX with ARAN:** start FR Video Service after a Capture session; ARAN must record on
+   the trigger again (trigger restored). With the service running, Capture must refuse.
 
 ## Software found on ARAN99 (read only, for later phases)
 | What | Version | Where | Use |
