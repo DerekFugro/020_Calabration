@@ -138,3 +138,31 @@ def test_collect_lens_photos_says_so_when_capture_is_missing(app, monkeypatch, t
     monkeypatch.setattr(L.QMessageBox, "warning", staticmethod(lambda *a: warned.append(a[2])))
     lch = L.Launcher()
     assert lch.start_capture() is False and not started and "not installed" in warned[0]
+
+
+
+def test_handed_over_folder_survives_the_first_camera_pick(app, tmp_path):
+    """Bug 2026-11-14: Capture's "Open in calibration app" filled the folder, then picking the
+    camera cleared it.  The first pick keeps it; changing to another camera still starts over."""
+    from src.widgets.app_window import AppWindow
+    w = AppWindow(use_db=False)
+    w.open_tab("intrinsic", str(tmp_path))
+    setup = w.single.setup_screen
+    w.bar.role_combo.setCurrentText("ROW"); app.processEvents()
+    assert setup.folder_input.text() == str(tmp_path)
+    w.bar.role_combo.setCurrentText("ForwardRight"); app.processEvents()
+    assert setup.folder_input.text() == ""                    # a different camera: start over
+    w.close()
+
+
+def test_camera_from_capture_is_picked_and_folder_kept(app, tmp_path):
+    import time
+    from src.widgets.app_window import AppWindow
+    w = AppWindow(use_db=False)
+    w.open_tab("intrinsic", str(tmp_path), camera="row")
+    t0 = time.time()
+    while time.time() - t0 < 3 and w.bar.role_combo.currentText() != "ROW":
+        app.processEvents(); time.sleep(0.02)
+    assert w.bar.role_combo.currentText() == "ROW"
+    assert w.single.setup_screen.folder_input.text() == str(tmp_path)
+    w.close()

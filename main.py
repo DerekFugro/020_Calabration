@@ -19,6 +19,7 @@ APP_NAME = "SurveyorCalibration"
 def main() -> int:
     ap = argparse.ArgumentParser(prog=APP_NAME)
     ap.add_argument("--folder", default="", help="photo folder: open Load Intrinsic on it, no start screen")
+    ap.add_argument("--camera", default="", help="with --folder: pick this camera in the top bar (SurveyorCapture)")
     args, qt_args = ap.parse_known_args(sys.argv[1:])
     from src.paths import migrate_old_name, seed_data
     migrate_old_name()
@@ -32,7 +33,7 @@ def main() -> int:
     from src.widgets.launcher import Launcher
     launcher = Launcher()
     if args.folder:
-        launcher.open_main("intrinsic", folder=args.folder, use_db=True)
+        launcher.open_main("intrinsic", folder=args.folder, use_db=True, camera=args.camera)
     else:
         launcher.show()
 

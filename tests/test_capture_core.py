@@ -127,3 +127,14 @@ def test_error_log_rotates_and_hides_passwords(tmp_path, monkeypatch):
     assert "secret" not in p.read_text(encoding="utf-8")
     log_error("x" * 200, path=p); log_error("after rotate", path=p)
     assert p.with_suffix(".log.1").exists() and "after rotate" in p.read_text(encoding="utf-8")
+
+
+def test_session_folder_name_and_never_reused(tmp_path):
+    from datetime import datetime
+    from src.capture.saver import session_folder
+    when = datetime(2026, 11, 14, 6, 36, 5)
+    a = session_folder(tmp_path, "Right", "000312", when)
+    b = session_folder(tmp_path, "Right", "000312", when)
+    assert a.name == "Right_000312_20261114_063605" and b.name == "Right_000312_20261114_063605_2"
+    assert session_folder(tmp_path, "ROW", "", when).name == "ROW_noserial_20261114_063605"
+    assert a.is_dir() and b.is_dir()

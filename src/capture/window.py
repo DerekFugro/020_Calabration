@@ -106,6 +106,7 @@ class CaptureWindow(QMainWindow):
         self._worker = None
         self._list_worker = None
         self._log = None
+        self._session = None          # this camera's subfolder in the base folder (first Grab)
         self._delivered = None
         self._count = 0
         self._countdown_left = 0
@@ -139,7 +140,7 @@ class CaptureWindow(QMainWindow):
         self.preview.setMinimumSize(QSize(480, 270))
         self.overlay = QLabel("", self.preview); self.overlay.setAlignment(Qt.AlignmentFlag.AlignCenter); self.overlay.hide()
         self.info = QLabel("")
-        self.folder_edit = QLineEdit(); self.folder_edit.setPlaceholderText("Folder for the photos")
+        self.folder_edit = QLineEdit(); self.folder_edit.setPlaceholderText("Base folder: each camera gets its own subfolder")
         self.browse_btn = QPushButton("Browse...")
         self.count_label = QLabel("0 photos")
         self.grab_btn = QPushButton("Grab")
@@ -164,7 +165,7 @@ class CaptureWindow(QMainWindow):
         self.thumbs_scroll.setWidget(self.thumbs); self.thumbs_scroll.setWidgetResizable(True)
         self.thumbs_scroll.setFixedHeight(112); self.thumbs_scroll.setFrameShape(QFrame.Shape.NoFrame)
         fold = QHBoxLayout(); fold.setSpacing(SPACING)
-        fold.addWidget(QLabel("Photos go to:")); fold.addWidget(self.folder_edit, 1); fold.addWidget(self.browse_btn)
+        fold.addWidget(QLabel("Base folder:")); fold.addWidget(self.folder_edit, 1); fold.addWidget(self.browse_btn)
         fold.addWidget(self.count_label)
         acts = QHBoxLayout(); acts.setSpacing(SPACING)
         acts.addWidget(self.grab_btn, 2); acts.addWidget(self.countdown_btn, 1)
@@ -294,7 +295,7 @@ class CaptureWindow(QMainWindow):
         self._stop_camera()
         i = self.camera_combo.currentIndex()
         self._cam = self._cams[i] if 0 <= i < len(self._cams) else None
-        self._log, self._delivered = None, None
+        self._log, self._session, self._delivered = None, None, None
         self._clear_thumbnails(); self._count = 0; self.count_label.setText("0 photos")
         user = self._cam is not None and self._cam.source == "user"
         self.user_row.setVisible(user)
@@ -426,12 +427,18 @@ class CaptureWindow(QMainWindow):
             if not folder:
                 return
         if self._log is None:
-            self._log = CaptureLog(folder, self.van_edit.text().strip().upper(), self.camera_name(), self._cam.source,
-                                   self._cam.port, self.serial(), self._expected(), self._delivered, self.use_db.isChecked())
+            from src.capture.saver import session_folder
+            try:
+                self._session = session_folder(folder, self.camera_name(), self.serial())
+            except OSError as exc:
+                self._say(f"Could not make a folder in {folder}: {exc}", "red"); return
+            self._log = CaptureLog(self._session, self.van_edit.text().strip().upper(), self.camera_name(),
+                                   self._cam.source, self._cam.port, self.serial(), self._expected(),
+                                   self._delivered, self.use_db.isChecked())
         self._busy_saving = True
         self._sync_buttons()
         self._pending_countdown = countdown
-        self._worker.request_grab(folder, self._quality, countdown)
+        self._worker.request_grab(str(self._session), self._quality, countdown)
 
     def _saved(self, path: str, w: int, h: int, countdown: bool, thumb) -> None:
         if self._log is not None:
@@ -439,7 +446,7 @@ class CaptureWindow(QMainWindow):
         self._count += 1
         self.count_label.setText(f"{self._count} photo{'s' if self._count != 1 else ''}")
         self._create_thumbnail_widget(thumb, Path(path).name)
-        self._grab_done(f"Saved {Path(path).name} ({w} x {h}).", "green")
+        self._grab_done(f"Saved {Path(path).name} ({w} x {h}) in {Path(path).parent.name}.", "green")
 
     def _grab_done(self, msg: str, colour: str) -> None:
         self._busy_saving = False
@@ -484,20 +491,24 @@ class CaptureWindow(QMainWindow):
             self.folder_edit.setText(d)
 
     def _folder_changed(self) -> None:
-        self._log = None                                       # a new folder gets its own log
+        self._log, self._session = None, None                  # a new base folder: new session folder
         QSettings(ORG, APP).setValue("folder", self.folder_edit.text().strip())
         self._sync_buttons()
 
+    def _camera_args(self) -> list[str]:
+        return ["--camera", self.camera_name()] if self.camera_name() else []
+
     def _open_calibration(self) -> None:
-        folder = self.folder_edit.text().strip()
+        folder = str(self._session) if self._session else self.folder_edit.text().strip()
         if not folder:
             return
         if getattr(sys, "frozen", False):
             exe = Path(sys.executable).with_name("SurveyorCalibration.exe")
-            ok = QProcess.startDetached(str(exe), ["--folder", folder])
+            ok = QProcess.startDetached(str(exe), ["--folder", folder] + self._camera_args())
         else:
             root = _project_root()
-            ok = QProcess.startDetached(sys.executable, [str(root / "main.py"), "--folder", folder], str(root))
+            ok = QProcess.startDetached(sys.executable, [str(root / "main.py"), "--folder", folder] + self._camera_args(),
+                                        str(root))
         ok = ok[0] if isinstance(ok, tuple) else ok
         self._say("Opening the calibration app on this folder..." if ok else
                   "Could not start the calibration app.", "" if ok else "red")

@@ -18,6 +18,7 @@ All screens report through the one status bar at the bottom.
 
 from __future__ import annotations
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QFrame, QMainWindow, QMessageBox, QPushButton, QScrollArea, QTabWidget, QVBoxLayout, QWidget,
 )
@@ -44,6 +45,7 @@ class AppWindow(QMainWindow):
         # Bar on top: van, camera, serial
         from src.widgets.camera_bar import CameraBar
         self.bar = CameraBar(use_db=use_db)
+        self._use_db = use_db
         self.van_edit = self.bar.van_edit
 
         self.single = OneCameraScreen(self.bar)
@@ -97,13 +99,26 @@ class AppWindow(QMainWindow):
             self.bar._van_typed("")
 
     # ── start screen / Home ─────────────────────────────────────────────────
-    def open_tab(self, tab: str, folder: str = "") -> None:
-        """Show the tab chosen on the start screen; a photo folder goes to Load Intrinsic."""
+    def open_tab(self, tab: str, folder: str = "", camera: str = "") -> None:
+        """Show the tab chosen on the start screen; a photo folder goes to Load Intrinsic.
+        camera (from SurveyorCapture): picked in the bar once the van's camera list is there."""
         page = {"intrinsic": self.single, "extrinsic": self.extrinsic, "boards": self._boards_page}.get(tab, self.single)
         self.tabs.setCurrentWidget(page)
         if folder:
             self.tabs.setCurrentWidget(self.single)
-            self.single.setup_screen.folder_input.setText(folder)
+            self.single.hand_over_folder(folder)
+        if camera:
+            self._pick_camera_when_listed(camera)
+
+    def _pick_camera_when_listed(self, camera: str, tries: int = 60) -> None:
+        """Pick this camera in the bar when it appears in the list (the database answers in the
+        background); gives up after ~15 s and leaves the pick to the crew."""
+        combo = self.bar.role_combo
+        i = next((k for k in range(combo.count()) if combo.itemText(k).strip().lower() == camera.strip().lower()), -1)
+        if i >= 0 and (self.bar.db_res is not None or not self._use_db):
+            combo.setCurrentIndex(i)
+        elif tries > 0:
+            QTimer.singleShot(250, lambda: self._pick_camera_when_listed(camera, tries - 1))
 
     def busy(self) -> bool:
         """A calibration, check or solve is running."""

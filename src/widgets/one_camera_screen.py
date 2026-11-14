@@ -187,14 +187,24 @@ class OneCameraScreen(QWidget):
     def van(self) -> str:
         return self.bar.van
 
+    def hand_over_folder(self, folder: str) -> None:
+        """A photo folder handed over (SurveyorCapture's "Open in calibration app", --folder).
+        The crew picks the camera next: that first pick must not clear it (2026-11-14 bug)."""
+        self.setup_screen.folder_input.setText(folder)
+        self._keep_folder_once = True
+
     def new_camera(self) -> None:
-        """The camera changed in the top bar: start over (no folder, no result from the last camera)."""
+        """The camera changed in the top bar: start over (no folder, no result from the last camera).
+        Exception: the first camera pick after a folder was handed over keeps that folder."""
         if self._worker is not None and self._worker.isRunning():
             return                         # the bar is locked while a calibration runs
+        keep = getattr(self, "_keep_folder_once", False) and self._run is None
+        self._keep_folder_once = False
         self._run = None
         self._role = self._serial = ""
         self._report_pdf = None
-        self.setup_screen.clear_folder()
+        if not keep:
+            self.setup_screen.clear_folder()
         self.stack.setCurrentWidget(self.setup_screen)
         self.setup_screen.set_busy(False)
 

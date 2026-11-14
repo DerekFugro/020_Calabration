@@ -1,5 +1,8 @@
 """saver.py - save one full-size photo: <Camera>_<YYYYMMDD_HHMMSS_mmm>.jpg, never overwrite.
 
+The folder the crew picks is the BASE folder.  Each camera session gets its own subfolder
+in it: <Camera>_<Serial>_<YYYYMMDD_HHMMSS> (Derek, 2026-11-14), made at the first Grab.
+
 No resizing, cropping or filtering.  Written with cv2.imencode + a plain file write so folder
 names with any characters work; the file is created exclusively (never replaces one).
 """
@@ -16,6 +19,22 @@ import numpy as np
 def safe_camera(name: str) -> str:
     s = re.sub(r"[^A-Za-z0-9_-]+", "_", (name or "").strip()).strip("_")
     return s or "Camera"
+
+
+def session_folder(base, camera: str, serial: str, when: datetime | None = None) -> Path:
+    """Make and return a new <Camera>_<Serial>_<YYYYMMDD_HHMMSS> folder in base (never reused)."""
+    when = when or datetime.now()
+    ser = re.sub(r"[^A-Za-z0-9_-]+", "_", str(serial or "").strip()).strip("_") or "noserial"
+    stem = f"{safe_camera(camera)}_{ser}_{when:%Y%m%d_%H%M%S}"
+    Path(base).mkdir(parents=True, exist_ok=True)
+    p, n = Path(base) / stem, 2
+    while True:
+        try:
+            p.mkdir()                                   # exclusive: a new session never shares one
+            return p
+        except FileExistsError:
+            p = Path(base) / f"{stem}_{n}"
+            n += 1
 
 
 def photo_path(folder, camera: str, when: datetime | None = None) -> Path:

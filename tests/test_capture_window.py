@@ -47,11 +47,14 @@ def test_grab_three_photos_and_the_log(app, tmp_path):
     for _ in range(3):
         w._grab(False)
         assert wait(app, lambda: w.grab_btn.isEnabled() and not w._busy_saving)
-    photos = sorted(tmp_path.glob("ROW_*.jpg"))
+    subs = [d for d in tmp_path.iterdir() if d.is_dir()]
+    assert len(subs) == 1 and subs[0].name.startswith("ROW_0103043_")      # <camera>_<serial>_<date time>
+    assert not list(tmp_path.glob("*.jpg"))                                  # nothing in the base folder
+    photos = sorted(subs[0].glob("ROW_*.jpg"))
     assert len(photos) == 3 and w.count_label.text() == "3 photos"
     import cv2
     assert cv2.imread(str(photos[0])).shape == (1080, 1920, 3)
-    log = json.loads(next(tmp_path.glob("CAPTURE_*.json")).read_text(encoding="utf-8"))
+    log = json.loads(next(subs[0].glob("CAPTURE_*.json")).read_text(encoding="utf-8"))
     assert log["camera"] == "ROW" and log["serial"] == "0103043" and log["camera_source"] == "user"
     assert log["van_database_used"] is False and len(log["photos"]) == 3 and log["port"] == PORTS[0]
     assert "delivered 1920 x 1080" in w.info.text()
@@ -63,8 +66,8 @@ def test_countdown_grabs_once(app, tmp_path):
     w._countdown_s = 1
     assert wait(app, lambda: w.grab_btn.isEnabled())
     w._start_countdown()
-    assert wait(app, lambda: len(list(tmp_path.glob("ROW_*.jpg"))) == 1, 4)
-    log = json.loads(next(tmp_path.glob("CAPTURE_*.json")).read_text(encoding="utf-8"))
+    assert wait(app, lambda: len(list(tmp_path.glob("ROW_0103043_*/ROW_*.jpg"))) == 1, 4)
+    log = json.loads(next(tmp_path.glob("ROW_0103043_*/CAPTURE_*.json")).read_text(encoding="utf-8"))
     assert log["photos"][0]["countdown"] is True
     w.close()
 
@@ -75,7 +78,7 @@ def test_no_signal_is_never_saved(app, tmp_path):
     assert not w.grab_btn.isEnabled()
     w._worker.request_grab(str(tmp_path), 95)                 # even if asked directly
     assert wait(app, lambda: "Nothing was saved" in w.status.text())
-    assert not list(tmp_path.glob("ROW_*.jpg"))
+    assert not list(tmp_path.rglob("ROW_*.jpg"))
     w.close()
 
 
@@ -129,4 +132,25 @@ def test_long_database_message_wraps(app):
     from src.capture.window import CaptureWindow
     w = CaptureWindow(van="", camera="", folder="", use_db=False, source_factory=None, names=[])
     assert w.list_label.wordWrap()
+    w.close()
+
+
+def test_each_camera_session_gets_its_own_subfolder(app, tmp_path, monkeypatch):
+    """Derek 2026-11-14: the picked folder is the base; <camera>_<serial>_<date time> per session."""
+    w = _window(app, tmp_path)
+    assert wait(app, lambda: w.grab_btn.isEnabled())
+    w._grab(False); assert wait(app, lambda: not w._busy_saving)
+    first = w._session
+    assert first.parent == tmp_path and first.name.startswith("ROW_0103043_")
+    started = []
+    monkeypatch.setattr("src.capture.window.QProcess.startDetached",
+                        staticmethod(lambda *a: started.append(a) or True))
+    w._open_calibration()
+    assert str(first) in started[0][1]                       # calibration app opens the session folder
+    assert started[0][1][-2:] == ["--camera", "ROW"]          # ...with the camera picked
+    w._camera_chosen()                                        # pick the camera again: a new session
+    w.size_combo.setCurrentText("1920 x 1080")               # a Windows input asks for its size again
+    assert wait(app, lambda: w.grab_btn.isEnabled())
+    w._grab(False); assert wait(app, lambda: not w._busy_saving)
+    assert w._session != first and len([d for d in tmp_path.iterdir() if d.is_dir()]) == 2
     w.close()

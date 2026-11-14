@@ -261,7 +261,8 @@ setters.
   Off while Capture is open (20/20 frames at once); On again after close. Hard kill while
   open: camera left Off, restore file kept; the next open + close put it back On.
 **Done when:** [x] live picture + Grab on the GOX; [x] trigger restored on close and after a
-crash (checked on the camera); [ ] a lens from GOX photos grades PASS in the calibration app.
+crash (checked on the camera); [x] a lens from GOX photos grades PASS in the calibration app
+(2026-11-14: 95 photos by Derek, 31 used, all 9 areas done, RMS 0.45 px, steady 3 mm at 10 m).
 
 ---
 

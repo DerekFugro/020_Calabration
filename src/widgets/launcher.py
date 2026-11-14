@@ -69,12 +69,12 @@ class Launcher(QObject):
                                 f"SurveyorCapture could not be started.\n{prog}")
         return ok
 
-    def open_main(self, tab: str = "intrinsic", folder: str = "", use_db: bool | None = None):
+    def open_main(self, tab: str = "intrinsic", folder: str = "", use_db: bool | None = None, camera: str = ""):
         from src.widgets.app_window import AppWindow
         if use_db is None:
             use_db = self.start.database_on
         self.main = AppWindow(use_db=use_db, on_home=self.home)
-        self.main.open_tab(tab, folder)
+        self.main.open_tab(tab, folder, camera)
         self.main.show()
         self.start.hide()
         return self.main
