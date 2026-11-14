@@ -5,7 +5,10 @@ Phase 9 (Derek, 2026-11-14):
   * On a van the camera waits for the external trigger.  While Capture has it, the
     FrameStart trigger is switched Off (free run); on close the trigger settings found at
     open are put back, so ARAN finds the camera as it left it.  Nothing else is changed
-    (exposure and frame rate stay as they are).
+    (exposure and frame rate stay as they are).  The settings found are written to a small
+    file first and deleted after the restore, so if Capture crashes or is killed, the next
+    open still knows the original trigger and puts it back (checked on ARAN99's GOX:
+    FrameStart On / Line7 -> Off while open -> On again after close).
   * Refuse while ARAN's "FR Video Service" is running: it may hold the board.
   * Only open a board Windows lists: opening a board that isn't there pops up a BitFlow
     "Internal SDK Error" dialog that waits for a click (bench, 2026-11-14).
@@ -25,6 +28,8 @@ import time
 from functools import lru_cache
 from pathlib import Path
 
+import json
+
 import numpy as np
 
 from src.capture.source import OpenResult
@@ -37,6 +42,12 @@ _NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 # camera Bayer name -> OpenCV conversion (OpenCV names the pattern one pixel over)
 _BAYER = {"RG": "COLOR_BayerBG2BGR", "BG": "COLOR_BayerRG2BGR",
           "GR": "COLOR_BayerGB2BGR", "GB": "COLOR_BayerGR2BGR"}
+
+
+def restore_file(board: int) -> Path:
+    """Where the trigger found at open waits until it is put back."""
+    base = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "SurveyorCalibration"
+    return base / f"bitflow_board{board}_trigger.json"
 
 
 def is_bitflow_port(port: str) -> bool:
@@ -164,7 +175,8 @@ class BitFlowSource:
             pass
 
     def _free_run(self) -> None:
-        """Remember the FrameStart trigger, then switch it Off (free run)."""
+        """Remember the FrameStart trigger, then switch it Off (free run).  A restore file left
+        by a Capture that crashed holds the real original: the camera may still be in free run."""
         self._command("AcquisitionStop")
         self._locked(0)
         try:
@@ -172,6 +184,15 @@ class BitFlowSource:
             self._set_enum("TriggerSelector", "FrameStart")
             mode = self._enum("TriggerMode")
             self._restore = [("TriggerSelector", "FrameStart"), ("TriggerMode", mode), ("TriggerSelector", sel)]
+            f = restore_file(self.board)
+            try:
+                left = [tuple(x) for x in json.loads(f.read_text(encoding="utf-8"))]
+                if left:
+                    self._restore = left          # the last Capture never put it back
+            except (OSError, ValueError, TypeError):
+                pass
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(json.dumps(self._restore), encoding="utf-8")
             if mode != "Off":
                 self._set_enum("TriggerMode", "Off")
             self._set_enum("TriggerSelector", sel)
@@ -192,6 +213,10 @@ class BitFlowSource:
             except Exception:  # noqa: BLE001
                 pass
         self._restore = []
+        try:
+            restore_file(self.board).unlink()       # only after a restore that worked
+        except OSError:
+            pass
 
     # --- FrameSource -----------------------------------------------------------------------
     def open(self, width: int = 0, height: int = 0) -> OpenResult:

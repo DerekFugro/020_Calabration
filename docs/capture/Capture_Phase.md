@@ -257,8 +257,11 @@ setters.
 - BitFlow's Python module is not on PyPI: install the cp312 wheel from the BitFlow
   release (`uv pip install BFModule-2.0.3-cp312-cp312-win_amd64.whl`). Not in Setup.exe yet:
   read the BitFlow SDK licence first (ask Derek).
-**Done when:** live picture + Grab on the GOX; trigger restored on close (checked on the
-camera); a lens from GOX photos grades PASS in the calibration app.
+- Trigger restore checked on ARAN99's GOX (2026-11-14): found FrameStart On / Line7;
+  Off while Capture is open (20/20 frames at once); On again after close. Hard kill while
+  open: camera left Off, restore file kept; the next open + close put it back On.
+**Done when:** [x] live picture + Grab on the GOX; [x] trigger restored on close and after a
+crash (checked on the camera); [ ] a lens from GOX photos grades PASS in the calibration app.
 
 ---
 

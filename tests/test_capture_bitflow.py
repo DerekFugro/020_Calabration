@@ -74,7 +74,8 @@ def fake_module(cam: FakeCamera, frames=True):
 
 
 @pytest.fixture
-def card(monkeypatch):
+def card(monkeypatch, tmp_path):
+    monkeypatch.setattr(bitflow, "restore_file", lambda board: tmp_path / f"board{board}_trigger.json")
     monkeypatch.setattr(bitflow, "video_service_running", lambda: False)
     monkeypatch.setattr(bitflow, "boards_on_pc", lambda: 1)
     monkeypatch.setattr(bitflow, "load_genicam_settings", lambda: None)
@@ -143,3 +144,24 @@ def test_12_bit_is_scaled_to_8():
 def test_ports_and_board_numbers():
     assert bitflow.is_bitflow_port("0-GOX-16205C-CXP") and not bitflow.is_bitflow_port("Video (00-0 Pro Capture)")
     assert bitflow.board_number("0-GOX-16205C-CXP") == 0 and bitflow.board_number("2-GOX-X-CXP") == 2
+
+
+def test_crash_while_open_next_open_still_puts_the_trigger_back(card, tmp_path):
+    """Capture killed while the camera is in free run: the next Capture restores the original."""
+    cam = FakeCamera(trigger="On"); card(cam)
+    first = bitflow.BitFlowSource(0, "Right")
+    assert first.open().ok and cam.trigger["FrameStart"] == "Off"
+    assert (tmp_path / "board0_trigger.json").exists()               # written before the change
+    # ...Capture dies here: no close().  The camera is left in free run.
+    second = bitflow.BitFlowSource(0, "Right")
+    assert second.open().ok
+    assert ("TriggerMode", "On") in second._restore                    # from the file, not the "Off" it saw
+    second.close()
+    assert cam.trigger["FrameStart"] == "On"
+    assert not (tmp_path / "board0_trigger.json").exists()           # cleared after the restore
+
+
+def test_restore_file_cleared_after_normal_close(card, tmp_path):
+    cam = FakeCamera(trigger="Off"); card(cam)
+    s = bitflow.BitFlowSource(0, "Right"); assert s.open().ok; s.close()
+    assert cam.trigger["FrameStart"] == "Off" and not (tmp_path / "board0_trigger.json").exists()
