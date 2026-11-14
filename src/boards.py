@@ -86,6 +86,13 @@ def load_board_folder(folder: str | Path) -> BoardConfig:
         # Chessboard sizes are typed from a measurement (calipers / Boards tab);
         # a board added in the Boards tab says measured: false until measured.
         b.print_measured = spec.get("measured", True) is not False
+        b.finder = str(spec.get("finder", "") or "").strip().lower()
+        # The original 12x8 board has hollow corner markers.  Board files already copied to
+        # C:\ProgramData are never overwritten, so they may not say so: same name, squares and
+        # cell size = that board (2026-11-14).
+        if ("finder" not in spec and name == "Chessboard 12x8" and (b.squares_x, b.squares_y) == (12, 8)
+                and abs(b.cell_width_mm - 76.39) < 0.05):
+            b.finder = "corner_markers"
         return b
 
     raise ValueError(f"{spec_path}: type must be 'chessboard' or 'dots', got {kind!r}.")

@@ -100,6 +100,9 @@ class BoardConfig:
     label: str = ""                  # text printed on the board, if any
     dot_xy_mm: Optional[np.ndarray] = field(default=None, repr=False)
     dot_radius_mm: Optional[np.ndarray] = field(default=None, repr=False)
+    # Chessboards: an extra finder made for this board, tried when OpenCV's miss.
+    # "corner_markers" = src/marker_finder.py (the 12x8 board's hollow corner markers).
+    finder: str = ""
 
     @property
     def is_dots(self) -> bool:

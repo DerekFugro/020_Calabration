@@ -66,11 +66,9 @@ def _chessboard_found(gray: np.ndarray, board: BoardConfig) -> bool:
     found, _ = cv2.findChessboardCorners(small, pattern, flags)
     if found:
         return True
-    # What the detector does (src/detector.py): SB on the full-size picture, white border.
-    from src.detector import _CB_FLAGS_SB
-    full = cv2.copyMakeBorder(gray, 60, 60, 60, 60, cv2.BORDER_CONSTANT, value=255)
-    found, _ = cv2.findChessboardCornersSB(full, pattern, _CB_FLAGS_SB)
-    return bool(found)
+    # Exactly what the detector does (src/detector.py find_chessboard), board finder included.
+    from src.detector import find_chessboard, prepare_chessboard_gray
+    return find_chessboard(prepare_chessboard_gray(gray), board)[0] is not None
 
 
 def auto_detect_board(image_paths: list[str], boards: list[BoardConfig],

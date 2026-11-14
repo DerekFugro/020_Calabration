@@ -105,11 +105,9 @@ def find_board(gray: np.ndarray, board):
         from src.dot_detector import detect_blobs, match_dots
         m = match_dots(detect_blobs(gray), board.dot_xy_mm, image_size=(w, h))
         return None if m is None else np.asarray(m.image_points, float).reshape(-1, 2)
-    from src.detector import _CB_FLAGS_SB
-    pad = 60
-    padded = cv2.copyMakeBorder(gray, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=255)
-    found, corners = cv2.findChessboardCornersSB(padded, (board.squares_x - 1, board.squares_y - 1), _CB_FLAGS_SB)
-    return corners.reshape(-1, 2) - pad if found else None
+    from src.detector import find_chessboard, prepare_chessboard_gray
+    corners, _ids = find_chessboard(prepare_chessboard_gray(gray), board)
+    return None if corners is None else corners.reshape(-1, 2)
 
 
 def pick_board(gray: np.ndarray, boards):

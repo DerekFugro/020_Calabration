@@ -5,3 +5,4 @@ squares_y: 8
 cell_width_mm: 76.39     # measured with calipers 2026-08-18 (references/BoardTrueSize.md)
 cell_height_mm: 76.39
 # Print files and the generate_*.py scripts that make them are in this folder.
+finder: corner_markers  # hollow corner markers: src/marker_finder.py when OpenCV's finders miss (2026-11-14)

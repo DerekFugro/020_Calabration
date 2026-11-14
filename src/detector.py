@@ -56,6 +56,39 @@ def _compute_blur(gray: np.ndarray) -> float:
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
+_PAD = 60   # white border: findChessboardCorners needs a clear white margin round the outer squares
+
+
+def prepare_chessboard_gray(gray: np.ndarray) -> np.ndarray:
+    """CLAHE: evens out uneven lighting (common with large boards under room lights)."""
+    return cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+
+
+def find_chessboard(gray: np.ndarray, board_config: BoardConfig):
+    """(corners (N, 1, 2) before sub-pixel refinement, ids (N,)) or (None, None).
+    gray: already prepare_chessboard_gray()'d.  The calibration app, auto-detect and
+    SurveyorCapture's auto grab all use this, so they agree on what counts as found.
+      1. OpenCV SB, then OpenCV classic, on the picture with a white border.
+         Corners in that border are not real (board running off the edge) and would crash
+         cornerSubPix: treated as not found (GOX timer photo, 2026-11-14).
+      2. If both miss and the board has its own finder (board.yaml finder:), that finder."""
+    h, w = gray.shape[:2]
+    pattern = (board_config.squares_x - 1, board_config.squares_y - 1)
+    padded = cv2.copyMakeBorder(gray, _PAD, _PAD, _PAD, _PAD, cv2.BORDER_CONSTANT, value=255)
+    found, corners = cv2.findChessboardCornersSB(padded, pattern, _CB_FLAGS_SB)
+    if not found or corners is None:
+        found, corners = cv2.findChessboardCorners(padded, pattern, _CB_FLAGS)
+    if found and corners is not None:
+        corners = corners.astype(np.float32) - np.array([_PAD, _PAD], dtype=np.float32)
+        xy = corners.reshape(-1, 2)
+        if not ((xy[:, 0] < 0).any() or (xy[:, 1] < 0).any() or (xy[:, 0] > w - 1).any() or (xy[:, 1] > h - 1).any()):
+            return corners, np.arange(len(xy))
+    if getattr(board_config, "finder", "") == "corner_markers":
+        from src.marker_finder import find_marker_corners
+        return find_marker_corners(gray, board_config.squares_x, board_config.squares_y)
+    return None, None
+
+
 def _detect_single(
     image_path: str,
     board_config: BoardConfig,
@@ -82,33 +115,9 @@ def _detect_single(
     if board_config.is_dots:
         return _detect_dots(image_path, gray, (w, h), blur_score, board_config)
 
-    # CLAHE normalises uneven lighting (common with large boards under room lights)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gray  = clahe.apply(gray)
-
-    # Add white border — findChessboardCorners requires clear white margin around
-    # the outermost squares; boards trimmed to the edge will fail without this.
-    _PAD = 60
-    gray_padded = cv2.copyMakeBorder(
-        gray, _PAD, _PAD, _PAD, _PAD, cv2.BORDER_CONSTANT, value=255
-    )
-
-    pattern = (board_config.squares_x - 1, board_config.squares_y - 1)
-
-    # Try the more robust SB detector first, fall back to classic
-    found, corners = cv2.findChessboardCornersSB(gray_padded, pattern, _CB_FLAGS_SB)
-    if not found or corners is None:
-        found, corners = cv2.findChessboardCorners(gray_padded, pattern, _CB_FLAGS)
-
-    # Shift corners back to original (unpadded) coordinate space
-    if found and corners is not None:
-        corners = corners - np.array([_PAD, _PAD], dtype=np.float32)
-        # A corner in the white border we added is not a real corner (board running off the
-        # edge); cornerSubPix would crash on it ("initial corner is outside the image") and
-        # stop the whole run.  Seen on a GOX timer photo, 2026-11-14: treat as not found.
-        xy = corners.reshape(-1, 2)
-        if (xy[:, 0] < 0).any() or (xy[:, 1] < 0).any() or (xy[:, 0] > w - 1).any() or (xy[:, 1] > h - 1).any():
-            found, corners = False, None
+    gray = prepare_chessboard_gray(gray)
+    corners, found_ids = find_chessboard(gray, board_config)
+    found = corners is not None
 
     if not found or corners is None:
         return DetectionResult(
@@ -123,8 +132,8 @@ def _detect_single(
     # Sub-pixel refinement
     corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), _SUBPIX_CRITERIA)
 
-    n_corners = len(corners)  # always (squares_x-1)*(squares_y-1) when found
-    ids = np.arange(n_corners, dtype=np.int32).reshape(n_corners, 1)
+    n_corners = len(corners)  # all inside corners (OpenCV), or all but 4 (marker finder)
+    ids = np.asarray(found_ids, dtype=np.int32).reshape(n_corners, 1)
 
     return DetectionResult(
         image_path=image_path,
