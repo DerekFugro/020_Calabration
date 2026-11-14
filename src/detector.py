@@ -103,6 +103,12 @@ def _detect_single(
     # Shift corners back to original (unpadded) coordinate space
     if found and corners is not None:
         corners = corners - np.array([_PAD, _PAD], dtype=np.float32)
+        # A corner in the white border we added is not a real corner (board running off the
+        # edge); cornerSubPix would crash on it ("initial corner is outside the image") and
+        # stop the whole run.  Seen on a GOX timer photo, 2026-11-14: treat as not found.
+        xy = corners.reshape(-1, 2)
+        if (xy[:, 0] < 0).any() or (xy[:, 1] < 0).any() or (xy[:, 0] > w - 1).any() or (xy[:, 1] > h - 1).any():
+            found, corners = False, None
 
     if not found or corners is None:
         return DetectionResult(

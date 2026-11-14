@@ -209,3 +209,15 @@ def test_cli_auto_on_dot_images(dot_sets, capsys):
     assert cli.main([folder]) == 0
     out = capsys.readouterr().out
     assert "Auto-detected board: Randot-003" in out and "RMS" in out
+
+
+def test_corners_in_the_added_border_count_as_not_found(tmp_path, monkeypatch):
+    """2026-11-14 (GOX timer photo): SB put corners in the white border the detector adds;
+    cornerSubPix then raised 'initial corner is outside the image' and stopped the whole run."""
+    import src.detector as D
+    p = tmp_path / "edge.png"
+    cv2.imwrite(str(p), np.full((300, 400, 3), 200, np.uint8))
+    bad = np.array([[[10.0, 10.0]]] * 77, np.float32)            # padded coords: (-50, -50) in the photo
+    monkeypatch.setattr(D.cv2, "findChessboardCornersSB", lambda *a, **k: (True, bad))
+    r = D._detect_single(str(p), BoardConfig())
+    assert r.corner_count == 0 and r.charuco_corners is None
