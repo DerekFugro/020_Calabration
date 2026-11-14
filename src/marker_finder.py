@@ -96,9 +96,10 @@ def _holes_in(binary: np.ndarray) -> list[tuple[np.ndarray, float]]:
 
 
 def outer_ids(squares_x: int, squares_y: int) -> set[int]:
-    """The 4 inside corners that touch a marker cell.  On the physical board the marker sits
-    where a white square would be, so these corners have three dark squares round them, not
-    a true chessboard corner; finders disagree on them by up to ~20 px.  Left out."""
+    """The 4 inside corners that touch a marker cell.  On the physical board the top-left and
+    bottom-right markers sit where a white square would be, so those corners have three dark
+    squares round them - not a true chessboard corner; finders disagreed by up to ~20 px
+    there (and once at the top-right one).  All four are left out to be safe."""
     cols, rows = squares_x - 1, squares_y - 1
     return {0, cols - 1, (rows - 1) * cols, rows * cols - 1}
 

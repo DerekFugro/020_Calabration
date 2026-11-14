@@ -68,17 +68,21 @@ def main() -> None:
     img = Image.new("RGB", (img_w, img_h), WHITE_RGB)
     draw = ImageDraw.Draw(img)
 
-    # Checkerboard squares
+    # Checkerboard squares.  On the physical board the top-left square is WHITE (its right
+    # and lower neighbours are dark) - checked on GOX photos 2026-11-14; this script used to
+    # start with a dark square, one square out.
     for row in range(config.squares_y):
         for col in range(config.squares_x):
-            if (row + col) % 2 == 1:
+            if (row + col) % 2 == 0:
                 continue  # leave white square unpainted
             x0 = margin_px_x + col * cell_px_x
             y0 = margin_px_y + row * cell_px_y
             draw.rectangle([x0, y0, x0 + cell_px_x, y0 + cell_px_y], fill=DARK_SQUARE_RGB)
 
     # Corner fiducials: solid cell + centered white hole, all four identical,
-    # overriding whatever the checker pattern would have put there.
+    # overriding whatever the checker pattern would have put there.  With the top-left
+    # square white, the top-left and bottom-right markers replace WHITE squares and the
+    # other two replace dark ones.
     corners = [(0, 0), (0, config.squares_x - 1), (config.squares_y - 1, 0),
                (config.squares_y - 1, config.squares_x - 1)]
     hole_w = round(cell_px_x * FIDUCIAL_HOLE_RATIO)

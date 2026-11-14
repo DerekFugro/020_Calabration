@@ -1,5 +1,5 @@
-"""The 12x8 board's own finder (src/marker_finder.py): hollow corner markers sit where a
-white square would be (the physical board, 2026-11-14)."""
+"""The 12x8 board's own finder (src/marker_finder.py): hollow corner markers; the top-left square
+is white, so 2 of the 4 markers sit where a white square would be (physical board, 2026-11-14)."""
 import cv2
 import numpy as np
 
