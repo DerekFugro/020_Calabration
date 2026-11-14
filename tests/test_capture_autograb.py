@@ -142,3 +142,47 @@ def test_window_stop_button_and_camera_change_stop_auto(app, tmp_path, monkeypat
     assert w._auto is None
     assert not list(tmp_path.rglob("*.jpg"))
     w.close()
+
+
+def test_window_timer_saves_every_few_seconds_without_a_board(app, tmp_path, monkeypatch):
+    """Timer mode: saves no matter what (no board finder), stops at the target."""
+    from src.capture.source import FakeSource
+    from src.capture.window import CaptureWindow
+    monkeypatch.setattr(autograb, "find_board", lambda g, b: pytest.fail("timer mode must not look for the board"))
+    w = CaptureWindow(use_db=False, folder=str(tmp_path), names=["Video (00-1 Pro Capture Dual HDMI 4K+)"],
+                      source_factory=lambda cam, index: FakeSource(camera="ROW"))
+    w.camera_combo.setCurrentIndex(0)
+    w.name_combo.setCurrentText("ROW"); w.serial_edit.setText("88888888")
+    w.size_combo.setCurrentText("1920 x 1080")
+    assert wait(app, lambda: w.auto_btn.isEnabled())
+    assert w.every_spin.isHidden()
+    w.auto_mode.setCurrentText("Timer"); assert not w.every_spin.isHidden() and w.every_spin.value() == 2.0
+    w.every_spin.setValue(0.5)
+    monkeypatch.setattr(w.target_spin, "value", lambda: 4)
+    t0 = time.time()
+    w._toggle_auto()
+    assert "TIMER" in w.auto_label.text()
+    assert wait(app, lambda: w._auto is None, 15)
+    assert len(list(tmp_path.glob("ROW_88888888_*/ROW_*.jpg"))) == 4 and time.time() - t0 >= 1.4   # ~0.5 s apart
+    assert "done" in w.status.text().lower()
+    w.close()
+
+
+def test_timer_skips_no_signal(app, tmp_path):
+    from src.capture.source import FakeSource
+    from src.capture.window import CaptureWindow
+    w = CaptureWindow(use_db=False, folder=str(tmp_path), names=["Video (00-1 Pro Capture Dual HDMI 4K+)"],
+                      source_factory=lambda cam, index: FakeSource(camera="ROW", no_signal=True))
+    w.camera_combo.setCurrentIndex(0)
+    w.name_combo.setCurrentText("ROW"); w.serial_edit.setText("88888888")
+    w.size_combo.setCurrentText("1920 x 1080")
+    assert wait(app, lambda: w._delivered is not None)
+    from src.capture.autograb import AutoGrabThread
+    a = AutoGrabThread(w._worker, 3, every_s=0.5)
+    seen = []
+    a.state.connect(lambda what, n, t: seen.append(what)); a.want_save.connect(lambda f, s: seen.append("asked"))
+    a.start()
+    assert wait(app, lambda: seen.count("no picture") >= 2, 5)
+    a.stop()
+    assert "asked" not in seen and not list(tmp_path.rglob("*.jpg"))
+    w.close()

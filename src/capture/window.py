@@ -18,7 +18,7 @@ from PySide6.QtCore import QProcess, QSettings, QSize, Qt, QThread, QTimer, Sign
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
-    QKeySequenceEdit, QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea, QSpinBox,
+    QKeySequenceEdit, QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea, QSpinBox, QDoubleSpinBox,
     QVBoxLayout, QWidget,
 )
 
@@ -149,6 +149,11 @@ class CaptureWindow(QMainWindow):
         self.auto_btn = QPushButton("Auto grab")
         self.auto_btn.setToolTip("Saves a photo by itself each time the board is found, held still, "
                                  "and in a new spot. Stops at the target count.")
+        self.auto_mode = QComboBox(); self.auto_mode.addItems(["Smart", "Timer"])
+        self.auto_mode.setToolTip("Smart: saves when the board is found, still and in a new spot.\n"
+                                  "Timer: saves a photo every few seconds no matter what.")
+        self.every_spin = QDoubleSpinBox(); self.every_spin.setRange(0.5, 60.0); self.every_spin.setSingleStep(0.5)
+        self.every_spin.setValue(2.0); self.every_spin.setSuffix(" s"); self.every_spin.setToolTip("Timer: seconds between photos")
         self.target_spin = QSpinBox(); self.target_spin.setRange(5, 200); self.target_spin.setValue(40)
         self.target_spin.setToolTip("Auto grab stops after this many photos")
         self.auto_label = QLabel("", self.preview); self.auto_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -177,7 +182,8 @@ class CaptureWindow(QMainWindow):
         fold.addWidget(self.count_label)
         acts = QHBoxLayout(); acts.setSpacing(SPACING)
         acts.addWidget(self.grab_btn, 2); acts.addWidget(self.countdown_btn, 1)
-        acts.addWidget(self.auto_btn, 1); acts.addWidget(QLabel("Target:")); acts.addWidget(self.target_spin)
+        acts.addWidget(self.auto_btn, 1); acts.addWidget(self.auto_mode); acts.addWidget(self.every_spin)
+        acts.addWidget(QLabel("Target:")); acts.addWidget(self.target_spin)
         acts.addWidget(self.open_cal_btn); acts.addWidget(self.advanced_btn)
         central = QWidget()
         lay = QVBoxLayout(central); lay.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN); lay.setSpacing(SPACING)
@@ -199,6 +205,7 @@ class CaptureWindow(QMainWindow):
         self.grab_btn.clicked.connect(lambda: self._grab(False))
         self.countdown_btn.clicked.connect(self._start_countdown)
         self.auto_btn.clicked.connect(self._toggle_auto)
+        self.auto_mode.currentTextChanged.connect(lambda m: self.every_spin.setVisible(m == "Timer"))
         self.open_cal_btn.clicked.connect(self._open_calibration)
         self.advanced_btn.clicked.connect(self._advanced)
         self._tick = QTimer(self); self._tick.setInterval(1000); self._tick.timeout.connect(self._countdown_step)
@@ -235,6 +242,7 @@ class CaptureWindow(QMainWindow):
         self._want_camera = camera
         self.use_db.blockSignals(True); self.use_db.setChecked(use_db); self.use_db.blockSignals(False)
         self.user_row.hide()
+        self.every_spin.setVisible(False)              # only for Timer
         self._sync_buttons()
         self._refresh_cameras()
 
@@ -466,15 +474,18 @@ class CaptureWindow(QMainWindow):
         if not self._ready_to_grab() or not self._ensure_session():
             return
         from src.capture.autograb import AutoGrabThread
-        self._auto = AutoGrabThread(self._worker, self.target_spin.value(), parent=self)
+        timer = self.auto_mode.currentText() == "Timer"
+        self._auto = AutoGrabThread(self._worker, self.target_spin.value(), parent=self,
+                                    every_s=self.every_spin.value() if timer else None)
         self._auto.state.connect(self._auto_state)
         self._auto.want_save.connect(self._auto_save)
         self._auto.board_found.connect(lambda n: self._say(f"Auto grab: board {n}. Hold it still in a new spot "
                                                            "each time.", ""))
-        self._auto_says("LOOKING FOR THE BOARD")
+        self._auto_says(f"TIMER: A PHOTO EVERY {self.every_spin.value():g} S" if timer else "LOOKING FOR THE BOARD")
         self._auto.start()
         self.auto_btn.setText("Stop auto")
-        self._say("Auto grab: hold the board in front of the camera.", "")
+        self._say(f"Auto grab (timer): a photo every {self.every_spin.value():g} s - move the board between photos."
+                  if timer else "Auto grab: hold the board in front of the camera.", "")
         self._sync_buttons()
 
     def _stop_auto(self, msg: str = "", colour: str = "") -> None:
@@ -613,7 +624,7 @@ class CaptureWindow(QMainWindow):
         auto = self._auto is not None
         self.grab_btn.setEnabled(ready and not auto); self.countdown_btn.setEnabled(ready and not auto)
         self.auto_btn.setEnabled(auto or (ready and self._worker is not None))
-        self.target_spin.setEnabled(not auto)
+        self.target_spin.setEnabled(not auto); self.auto_mode.setEnabled(not auto); self.every_spin.setEnabled(not auto)
         self.try_btn.setEnabled(self._cam is not None and self._cam.supported)
         self.open_cal_btn.setEnabled(bool(self.folder_edit.text().strip()))
 

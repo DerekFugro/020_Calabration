@@ -5,6 +5,10 @@ Derek, 2026-11-14: "I can not move the board and press grab by myself."  His cho
   * screen only (big text on the picture, no sound);
   * stop by itself at a target count (default 40); the button stops it any time.
 
+Timer mode (Derek, 2026-11-14, while the board finder misses many GOX poses): save a
+photo every N seconds (default 2) no matter what - only the card's "no signal" picture is
+skipped - and sort them out afterwards in the calibration app.
+
 A look runs about twice a second on the latest full frame (never slows the preview);
 the photo saved is the exact frame that was looked at.
 Board finding uses the same settings as the calibration app's detector (src/detector.py:
@@ -33,7 +37,7 @@ TARGET = 40
 LOOK_EVERY_S = 0.4
 
 # what the crew reads on the picture
-SAY = {"no board": "BOARD NOT FOUND", "moving": "HOLD STILL", "hold still": "HOLD STILL",
+SAY = {"no picture": "NO PICTURE", "no board": "BOARD NOT FOUND", "moving": "HOLD STILL", "hold still": "HOLD STILL",
        "same spot": "MOVE TO A NEW SPOT", "save": "SAVING...", "done": "DONE"}
 
 
@@ -131,9 +135,10 @@ class AutoGrabThread(QThread):
     want_save = Signal(object, object)         # frame, signature
     board_found = Signal(str)                  # board name
 
-    def __init__(self, worker, target: int = TARGET, boards=None, parent=None) -> None:
+    def __init__(self, worker, target: int = TARGET, boards=None, parent=None, every_s: float | None = None) -> None:
         super().__init__(parent)
         self.worker, self.logic = worker, AutoGrabLogic(target)
+        self.every_s = every_s                 # Timer mode: save every this many seconds
         self._boards, self.board = boards, None
         self._stop = False
         self._answer = threading.Event()
@@ -149,7 +154,33 @@ class AutoGrabThread(QThread):
         self._answer_ok = ok
         self._answer.set()
 
+    def _ask_save(self, frame) -> bool:
+        """Ask the window to save this frame; wait for its answer."""
+        self._answer.clear()
+        self.want_save.emit(frame, None)
+        self._answer.wait(15)
+        return not self._stop and self._answer_ok
+
+    def _run_timer(self) -> None:
+        from src.capture.nosignal import is_no_signal
+        n, target = 0, self.logic.target
+        next_t = time.monotonic()
+        while not self._stop and n < target:
+            now = time.monotonic()
+            if now < next_t:
+                time.sleep(min(0.05, next_t - now)); continue
+            next_t = now + self.every_s
+            frame = self.worker.latest() if self.worker is not None else None
+            if frame is None or is_no_signal(frame):
+                self.state.emit("no picture", n, target); continue
+            if self._ask_save(frame):
+                n += 1
+                self.state.emit("done" if n >= target else "saved", n, target)
+
     def run(self) -> None:
+        if self.every_s:
+            self._run_timer()
+            return
         if self._boards is None:
             self._boards = library_boards()
         while not self._stop:
