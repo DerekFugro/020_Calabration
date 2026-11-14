@@ -173,6 +173,16 @@ def test_auto_detect_chessboard(tmp_path, boards):
     assert res.board is not None and res.board.kind == KIND_CHESSBOARD
 
 
+def test_auto_detect_chessboard_when_the_fast_check_misses(tmp_path, boards, monkeypatch):
+    """2026-11-14: the fast classic check missed every GOX sample the detector reads fine;
+    auto-detect then tries the detector's own full-size SB finder."""
+    import src.auto_detect as ad
+    paths = _generate_board_images(tmp_path, BoardConfig(), n_images=4)
+    monkeypatch.setattr(ad.cv2, "findChessboardCorners", lambda *a, **k: (False, None))
+    res = auto_detect_board(paths, boards, n_samples=4)
+    assert res.board is not None and res.board.kind == KIND_CHESSBOARD
+
+
 def test_auto_detect_gives_up_on_blank_images(tmp_path, boards):
     paths = []
     for i in range(3):

@@ -4,7 +4,10 @@ One board per calibration run (Derek, 2026-10-29), so the board is decided
 once, from a spread of sample images, not per image.
 
 For each sample image every board in the library is tried:
-  * chessboards: cv2.findChessboardCorners on a reduced-size copy (fast check);
+  * chessboards: cv2.findChessboardCorners on a reduced-size copy (fast check), then -
+    if that misses - the same full-size findChessboardCornersSB the detector uses.  The
+    fast check alone missed every sample of Derek's GOX photos (3840x2160, board close
+    to the camera) that the detector reads fine (2026-11-14);
   * dot boards:  blobs are found once, then matched against each layout CSV.
     A wrong layout matches only a few dots by chance and is rejected by
     match_dots' "half the visible dots" rule.
@@ -51,15 +54,22 @@ def _sample(paths: list[str], n: int) -> list[str]:
 
 
 def _chessboard_found(gray: np.ndarray, board: BoardConfig) -> bool:
+    pattern = (board.squares_x - 1, board.squares_y - 1)
     h, w = gray.shape[:2]
+    small = gray
     if w > _CHESS_MAX_W:
         s = _CHESS_MAX_W / w
-        gray = cv2.resize(gray, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA)
-    gray = cv2.copyMakeBorder(gray, 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=255)
+        small = cv2.resize(gray, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA)
+    small = cv2.copyMakeBorder(small, 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=255)
     flags = (cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
              | cv2.CALIB_CB_FAST_CHECK)
-    found, _ = cv2.findChessboardCorners(
-        gray, (board.squares_x - 1, board.squares_y - 1), flags)
+    found, _ = cv2.findChessboardCorners(small, pattern, flags)
+    if found:
+        return True
+    # What the detector does (src/detector.py): SB on the full-size picture, white border.
+    from src.detector import _CB_FLAGS_SB
+    full = cv2.copyMakeBorder(gray, 60, 60, 60, 60, cv2.BORDER_CONSTANT, value=255)
+    found, _ = cv2.findChessboardCornersSB(full, pattern, _CB_FLAGS_SB)
     return bool(found)
 
 
