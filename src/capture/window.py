@@ -126,6 +126,7 @@ class CaptureWindow(QMainWindow):
         self.use_db = QCheckBox("Use the van database")
         self.camera_combo = QComboBox(); self.camera_combo.setMinimumWidth(380)
         self.list_label = QLabel("")
+        self.list_label.setWordWrap(True)          # a long "could not read the database" must not widen the window
         self.try_btn = QPushButton("Try again")
         # Windows inputs only: the crew says which camera, its serial and size
         self.name_combo = QComboBox(); self.name_combo.setEditable(True); self.name_combo.addItems(CAMERA_NAMES)

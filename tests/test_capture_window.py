@@ -122,3 +122,11 @@ def test_settings_never_reach_the_registry():
     from src.capture import window
     s = window.QSettings(window.ORG, window.APP)
     assert s.format() == __import__('PySide6.QtCore', fromlist=['QSettings']).QSettings.Format.IniFormat and "qsettings" in s.fileName()
+
+
+def test_long_database_message_wraps(app):
+    """Phase 5 check: the unreachable-database message widened the window to 1664 px."""
+    from src.capture.window import CaptureWindow
+    w = CaptureWindow(van="", camera="", folder="", use_db=False, source_factory=None, names=[])
+    assert w.list_label.wordWrap()
+    w.close()
