@@ -4,8 +4,9 @@
   2. otherwise every DirectShow video input Windows reports: the crew says which camera it
      is and types the serial.  (No ARAN Settings XML - Derek, 2026-11-13.)
 Inputs are found by NAME, never by number (ARAN99 lists 00-1 before 00-0).
-A database camera on another kind of input (e.g. Right on the BitFlow CoaXPress card) is
-listed but greyed out: "BitFlow camera: not supported yet" (Derek, 2026-11-14).
+A database camera on the BitFlow CoaXPress card (port like "0-GOX-16205C-CXP") opens through
+src/capture/bitflow.py when the BitFlow SDK and that board are on this PC (Phase 9,
+2026-11-14); otherwise it is greyed out with the reason.  GigE: not supported yet.
 """
 
 from __future__ import annotations
@@ -48,10 +49,11 @@ def resolve_index(port: str, names: list[str] | None = None) -> int | None:
 
 
 def _support(port: str, names: list[str]) -> tuple[bool, str]:
+    from src.capture import bitflow
+    if bitflow.is_bitflow_port(port):
+        return bitflow.support(port)
     if resolve_index(port, names) is not None:
         return True, ""
-    if "CXP" in port.upper() or "GOX" in port.upper():
-        return False, "BitFlow camera: not supported yet."
     if port.upper().startswith("GIGE"):
         return False, "GigE camera: not supported yet."
     return False, "Its input is not on this PC."

@@ -60,7 +60,9 @@ def test_inputs_found_by_name_not_number():
     assert cameras.resolve_index("Video (02-1 Pro Capture Dual SDI 4K+)", PORTS) is None
 
 
-def test_database_list_greys_out_bitflow(monkeypatch):
+def test_database_list_bitflow_greyed_without_card(monkeypatch):
+    """BitFlow cameras: greyed with the reason when the SDK or board is missing (Phase 9)."""
+    monkeypatch.setattr("src.capture.bitflow.support", lambda port: (False, "BitFlow camera: board 0 is not on this PC."))
     from src.camera_db import CameraRow, DbResult
     res = DbResult(cameras={
         "ROW": CameraRow("ROW", "88888888", 1920, 1080, PORTS[0], "Aran99-Server"),

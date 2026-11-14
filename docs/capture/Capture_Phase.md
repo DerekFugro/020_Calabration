@@ -245,9 +245,20 @@ setters.
 ## Phase 8 — Extrinsic (Old School) collection (later)
 **Complexity:** Complex — spec separately with Derek (setups, site, GPS, naming).
 
-## Phase 9 — CoaXPress cameras (later)
-**Complexity:** Complex — BitFlow frame grabber + JAI Spark SP-45001-CXP2A, via the
-BitFlow SDK, as a second `FrameSource`. Spec separately; manuals listed in CONTEXT.md.
+## Phase 9 — CoaXPress cameras (GOX started 2026-11-14)
+**Complexity:** Complex — BitFlow frame grabber, via the BitFlow SDK, as a second
+`FrameSource` (`src/capture/bitflow.py`). Derek's answers (2026-11-14):
+- GOX only for now (JAI GOX-16205C-CXP); Spark later.
+- Open with the camera setup loaded in BitFlow SysReg. Switch the FrameStart trigger Off
+  (free run) while Capture has the camera; **put the trigger back on close**.
+- Exposure and frame rate are left alone. Photos: full size JPEG, like the Magewell.
+- **Refuse while ARAN's FR Video Service is running.**
+- Code copied from Derek's DP_CXP app (his OK): DLL folders, TLParamsLocked unlock, close order.
+- BitFlow's Python module is not on PyPI: install the cp312 wheel from the BitFlow
+  release (`uv pip install BFModule-2.0.3-cp312-cp312-win_amd64.whl`). Not in Setup.exe yet:
+  read the BitFlow SDK licence first (ask Derek).
+**Done when:** live picture + Grab on the GOX; trigger restored on close (checked on the
+camera); a lens from GOX photos grades PASS in the calibration app.
 
 ---
 

@@ -335,11 +335,17 @@ class CaptureWindow(QMainWindow):
         if want is None:
             self.preview.setText("Pick the camera's size (top) to start the picture.")
             self._say("This input's size isn't known: pick the camera's size.", "amber"); self._sync_buttons(); return
-        index = cam_list.resolve_index(cam.port, self._inputs())
-        if index is None:
-            self._say(f"{cam.name or cam.port}: its input ({cam.port}) is not on this PC.", "red"); self._sync_buttons(); return
+        from src.capture import bitflow
+        if bitflow.is_bitflow_port(cam.port):
+            index = None
+        else:
+            index = cam_list.resolve_index(cam.port, self._inputs())
+            if index is None:
+                self._say(f"{cam.name or cam.port}: its input ({cam.port}) is not on this PC.", "red"); self._sync_buttons(); return
         if self._factory is not None:
             src = self._factory(cam, index)
+        elif index is None:
+            src = bitflow.BitFlowSource(bitflow.board_number(cam.port), self.camera_name())
         else:
             from src.capture.source import DShowSource
             src = DShowSource(index, self.camera_name())

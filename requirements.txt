@@ -6,3 +6,5 @@ pytest>=9.0.3
 pyproj>=3.6
 pyodbc>=5.0
 comtypes>=1.4.17; sys_platform == "win32"
+# GOX / BitFlow cameras (Capture Phase 9): BitFlow's BFModule is not on PyPI - install the
+# cp312 wheel from the BitFlow BFModule release by hand. See docs/capture/Capture_Phase.md.
