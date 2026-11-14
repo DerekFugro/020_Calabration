@@ -124,3 +124,16 @@ def test_collect_lens_photos_starts_capture_as_its_own_program(app, monkeypatch)
     assert lch.start.buttons["capture"].isEnabled()
     lch.start.buttons["capture"].click()
     assert started and started[0][1][:2] == ["-m", "src.capture"] and lch.main is None
+
+
+def test_collect_lens_photos_says_so_when_capture_is_missing(app, monkeypatch, tmp_path):
+    """Phase 4 done-when: without src/capture the launch button reports it, nothing starts."""
+    from src.widgets import launcher as L
+    assert not L.capture_present("python", ["-m", "src.capture"], str(tmp_path))
+    assert not L.capture_present(str(tmp_path / "SurveyorCapture.exe"), [], str(tmp_path))
+    started, warned = [], []
+    monkeypatch.setattr(L, "capture_present", lambda *a: False)
+    monkeypatch.setattr(L.QProcess, "startDetached", staticmethod(lambda *a: started.append(a) or True))
+    monkeypatch.setattr(L.QMessageBox, "warning", staticmethod(lambda *a: warned.append(a[2])))
+    lch = L.Launcher()
+    assert lch.start_capture() is False and not started and "not installed" in warned[0]

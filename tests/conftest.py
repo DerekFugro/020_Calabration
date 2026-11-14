@@ -22,6 +22,10 @@ def _isolated_settings(tmp_path_factory, monkeypatch):
         return QSettings(str(folder / f"{org}_{app}.ini"), QSettings.Format.IniFormat)
 
     for name in _MODULES:
-        monkeypatch.setattr(importlib.import_module(name), "QSettings", ini)
+        try:
+            module = importlib.import_module(name)
+        except ModuleNotFoundError:      # e.g. src/capture removed: the calibration app stands alone
+            continue
+        monkeypatch.setattr(module, "QSettings", ini)
     yield
 

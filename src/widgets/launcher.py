@@ -17,6 +17,13 @@ from PySide6.QtWidgets import QMessageBox
 TABS = {"intrinsic", "extrinsic", "boards"}
 
 
+def capture_present(prog: str, args: list[str], cwd: str) -> bool:
+    """Is SurveyorCapture there to start?  (Installed exe, or src/capture in a source run.)"""
+    if args[:2] == ["-m", "src.capture"]:
+        return (Path(cwd) / "src" / "capture" / "__main__.py").exists()
+    return Path(prog).exists()
+
+
 def capture_command(van: str, use_db: bool) -> tuple[str, list[str], str]:
     """(program, arguments, working folder) that start SurveyorCapture as its own process.
     Installed: SurveyorCapture.exe beside this exe.  From source: python -m src.capture.
@@ -50,6 +57,11 @@ class Launcher(QObject):
     def start_capture(self) -> bool:
         """SurveyorCapture in its own process; the start screen stays, for Calibrate lens after."""
         prog, args, cwd = capture_command(self.start.van if self.start.database_on else "", self.start.database_on)
+        if not capture_present(prog, args, cwd):
+            where = str(Path(cwd) / "src" / "capture") if args[:1] == ["-m"] else prog
+            QMessageBox.warning(self.start, "Collect lens photos",
+                                f"SurveyorCapture is not installed with this copy of the app.\nLooked for: {where}")
+            return False
         res = QProcess.startDetached(prog, args, cwd)
         ok = res[0] if isinstance(res, tuple) else bool(res)
         if not ok:
