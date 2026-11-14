@@ -45,10 +45,17 @@ class GrabWorker(QThread):
         self._stop = False
         self._lock = threading.Lock()
         self._pending = None
+        self._latest = None
 
-    def request_grab(self, folder: str, quality: int, countdown: bool = False) -> None:
+    def request_grab(self, folder: str, quality: int, countdown: bool = False, frame=None) -> None:
+        """Save the next frame - or this exact frame (auto grab saves the one it looked at)."""
         with self._lock:
-            self._pending = (folder, quality, countdown)
+            self._pending = (folder, quality, countdown, frame)
+
+    def latest(self):
+        """The newest full frame (for auto grab), or None."""
+        with self._lock:
+            return self._latest
 
     def stop(self) -> None:
         self._stop = True
@@ -84,8 +91,10 @@ class GrabWorker(QThread):
                     fps, n_count, t_count = n_count / (now - t_count), 0, now
                 with self._lock:
                     pending, self._pending = self._pending, None
+                    self._latest = f
                 if pending is not None:
-                    self._save(f, *pending)
+                    folder, quality, countdown, exact = pending
+                    self._save(f if exact is None else exact, folder, quality, countdown)
                 if now - last_preview >= 1.0 / PREVIEW_FPS:
                     last_preview = now
                     self.preview.emit(to_qimage(f, PREVIEW_MAX_W), is_no_signal(f), fps)

@@ -111,6 +111,7 @@ class CaptureWindow(QMainWindow):
         self._count = 0
         self._countdown_left = 0
         self._busy_saving = False
+        self._auto = None             # AutoGrabThread while auto grab runs
         self._closing = False          # a closing window never (re)opens a camera
         self._listed_for = None        # (van, database on) the camera list was made for
         self._create_widgets()
@@ -145,6 +146,13 @@ class CaptureWindow(QMainWindow):
         self.count_label = QLabel("0 photos")
         self.grab_btn = QPushButton("Grab")
         self.countdown_btn = QPushButton("Countdown")
+        self.auto_btn = QPushButton("Auto grab")
+        self.auto_btn.setToolTip("Saves a photo by itself each time the board is found, held still, "
+                                 "and in a new spot. Stops at the target count.")
+        self.target_spin = QSpinBox(); self.target_spin.setRange(5, 200); self.target_spin.setValue(40)
+        self.target_spin.setToolTip("Auto grab stops after this many photos")
+        self.auto_label = QLabel("", self.preview); self.auto_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.auto_label.hide()
         self.thumbs = QWidget()
         self.thumbs_scroll = QScrollArea()
         self.open_cal_btn = QPushButton("Open in calibration app")
@@ -169,6 +177,7 @@ class CaptureWindow(QMainWindow):
         fold.addWidget(self.count_label)
         acts = QHBoxLayout(); acts.setSpacing(SPACING)
         acts.addWidget(self.grab_btn, 2); acts.addWidget(self.countdown_btn, 1)
+        acts.addWidget(self.auto_btn, 1); acts.addWidget(QLabel("Target:")); acts.addWidget(self.target_spin)
         acts.addWidget(self.open_cal_btn); acts.addWidget(self.advanced_btn)
         central = QWidget()
         lay = QVBoxLayout(central); lay.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN); lay.setSpacing(SPACING)
@@ -189,6 +198,7 @@ class CaptureWindow(QMainWindow):
         self.folder_edit.textChanged.connect(lambda _t: self._folder_changed())
         self.grab_btn.clicked.connect(lambda: self._grab(False))
         self.countdown_btn.clicked.connect(self._start_countdown)
+        self.auto_btn.clicked.connect(self._toggle_auto)
         self.open_cal_btn.clicked.connect(self._open_calibration)
         self.advanced_btn.clicked.connect(self._advanced)
         self._tick = QTimer(self); self._tick.setInterval(1000); self._tick.timeout.connect(self._countdown_step)
@@ -356,13 +366,15 @@ class CaptureWindow(QMainWindow):
         self._worker.opened.connect(self._opened)
         self._worker.preview.connect(self._show_preview)
         self._worker.saved.connect(self._saved)
-        self._worker.refused.connect(lambda m: self._grab_done(m, "red"))
+        self._worker.refused.connect(self._refused)
         self._worker.stopped.connect(lambda m: (self._say(m, "red"), self._sync_buttons()))
         self._worker.start()
         self._say(f"Opening {self.camera_name() or cam.port}...", "")
         self._sync_buttons()
 
     def _stop_camera(self) -> None:
+        if self._auto is not None:
+            self._stop_auto()
         if self._worker is not None:
             w, self._worker = self._worker, None
             w.stop()
@@ -420,25 +432,91 @@ class CaptureWindow(QMainWindow):
             if self._cam is not None and self._cam.source == "user" and not self.camera_name():
                 self._say("Say which camera this input is (top) before grabbing.", "amber")
             return
+        if not self._ensure_session():
+            return
+        self._busy_saving = True
+        self._sync_buttons()
+        self._pending_countdown = countdown
+        self._worker.request_grab(str(self._session), self._quality, countdown)
+
+    def _ensure_session(self) -> bool:
+        """The base folder (ask if empty) and this camera's subfolder + log (made once)."""
         folder = self.folder_edit.text().strip()
         if not folder:
             self._browse()
             folder = self.folder_edit.text().strip()
             if not folder:
-                return
+                return False
         if self._log is None:
             from src.capture.saver import session_folder
             try:
                 self._session = session_folder(folder, self.camera_name(), self.serial())
             except OSError as exc:
-                self._say(f"Could not make a folder in {folder}: {exc}", "red"); return
+                self._say(f"Could not make a folder in {folder}: {exc}", "red"); return False
             self._log = CaptureLog(self._session, self.van_edit.text().strip().upper(), self.camera_name(),
                                    self._cam.source, self._cam.port, self.serial(), self._expected(),
                                    self._delivered, self.use_db.isChecked())
-        self._busy_saving = True
+        return True
+
+    # ── auto grab (one person: hold the board, Capture saves) ────────────────
+    def _toggle_auto(self) -> None:
+        if self._auto is not None:
+            self._stop_auto("Auto grab stopped.")
+            return
+        if not self._ready_to_grab() or not self._ensure_session():
+            return
+        from src.capture.autograb import AutoGrabThread
+        self._auto = AutoGrabThread(self._worker, self.target_spin.value(), parent=self)
+        self._auto.state.connect(self._auto_state)
+        self._auto.want_save.connect(self._auto_save)
+        self._auto.board_found.connect(lambda n: self._say(f"Auto grab: board {n}. Hold it still in a new spot "
+                                                           "each time.", ""))
+        self._auto_says("LOOKING FOR THE BOARD")
+        self._auto.start()
+        self.auto_btn.setText("Stop auto")
+        self._say("Auto grab: hold the board in front of the camera.", "")
         self._sync_buttons()
-        self._pending_countdown = countdown
-        self._worker.request_grab(str(self._session), self._quality, countdown)
+
+    def _stop_auto(self, msg: str = "", colour: str = "") -> None:
+        a, self._auto = self._auto, None
+        if a is not None:
+            a.stop()
+        self.auto_label.hide()
+        self.auto_btn.setText("Auto grab")
+        if msg:
+            self._say(msg, colour)
+        self._sync_buttons()
+
+    def _auto_says(self, text: str, colour: str = "white") -> None:
+        self.auto_label.setStyleSheet(f"color: {colour}; font-size: 36pt; font-weight: bold; "
+                                      "background: rgba(0,0,0,110); padding: 8px;")
+        self.auto_label.setText(text)
+        self.auto_label.setGeometry(0, 0, self.preview.width(), 90)
+        self.auto_label.show(); self.auto_label.raise_()
+
+    def _auto_state(self, what: str, n: int, target: int) -> None:
+        if self._auto is None:
+            return
+        from src.capture.autograb import SAY
+        if what == "done":
+            self._stop_auto(f"Auto grab done: {n} photos.", "green")
+            self._auto_says(f"DONE  {n} / {target}", "rgb(60,220,60)")
+            QTimer.singleShot(4000, self.auto_label.hide)
+            return
+        if what == "saved":
+            self._auto_says(f"SAVED  {n} / {target}", "rgb(60,220,60)")
+        else:
+            self._auto_says(f"{SAY.get(what, what.upper())}   {n} / {target}",
+                            "rgb(255,107,107)" if what == "no board" else "rgb(230,180,40)")
+
+    def _auto_save(self, frame, _sig) -> None:
+        if self._auto is None or self._worker is None or self._busy_saving or not self._ensure_session():
+            if self._auto is not None:
+                self._auto.answer(False)
+            return
+        self._busy_saving = True
+        self._pending_countdown = False
+        self._worker.request_grab(str(self._session), self._quality, False, frame=frame)
 
     def _saved(self, path: str, w: int, h: int, countdown: bool, thumb) -> None:
         if self._log is not None:
@@ -447,6 +525,13 @@ class CaptureWindow(QMainWindow):
         self.count_label.setText(f"{self._count} photo{'s' if self._count != 1 else ''}")
         self._create_thumbnail_widget(thumb, Path(path).name)
         self._grab_done(f"Saved {Path(path).name} ({w} x {h}) in {Path(path).parent.name}.", "green")
+        if self._auto is not None:
+            self._auto.answer(True)
+
+    def _refused(self, msg: str) -> None:
+        self._grab_done(msg, "red")
+        if self._auto is not None:
+            self._auto.answer(False)
 
     def _grab_done(self, msg: str, colour: str) -> None:
         self._busy_saving = False
@@ -525,7 +610,10 @@ class CaptureWindow(QMainWindow):
     # ── state ────────────────────────────────────────────────────────────────
     def _sync_buttons(self) -> None:
         ready = self._ready_to_grab()
-        self.grab_btn.setEnabled(ready); self.countdown_btn.setEnabled(ready)
+        auto = self._auto is not None
+        self.grab_btn.setEnabled(ready and not auto); self.countdown_btn.setEnabled(ready and not auto)
+        self.auto_btn.setEnabled(auto or (ready and self._worker is not None))
+        self.target_spin.setEnabled(not auto)
         self.try_btn.setEnabled(self._cam is not None and self._cam.supported)
         self.open_cal_btn.setEnabled(bool(self.folder_edit.text().strip()))
 
@@ -538,6 +626,8 @@ class CaptureWindow(QMainWindow):
         super().resizeEvent(e)
         if self.overlay.isVisible():
             self.overlay.setGeometry(self.preview.rect())
+        if self.auto_label.isVisible():
+            self.auto_label.setGeometry(0, 0, self.preview.width(), 90)
 
     def closeEvent(self, e) -> None:
         self._closing = True

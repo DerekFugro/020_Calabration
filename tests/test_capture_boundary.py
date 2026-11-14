@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ALLOWED = {"src.camera_db", "src.van_scan", "src.version", "src.styles", "src.paths"}
-LATER = {"src.detector", "src.board", "src.boards", "src.coverage"}          # live guidance (Phase 6)
+LATER = {"src.detector", "src.dot_detector", "src.board", "src.boards", "src.coverage"}  # live guidance / auto grab
 
 
 def _imports(path: Path):
