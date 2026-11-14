@@ -123,6 +123,7 @@ def load_saved(yaml_path: str | Path):
         warnings=list(g.get("warnings") or []), rms_px=cal.rms, images_used=cal.image_count_used,
         repeatability=None if p95 is None else Repeatability(float(p95), math.nan, math.nan, 0),
         more_photos=int(g.get("more_photos_needed") or 0),
+        missing=list(g.get("missing") or []),
         blur_median_px=float(g.get("dot_edge_blur_median_px") if g.get("dot_edge_blur_median_px") is not None else math.nan),
         left_out=[tuple(x) if isinstance(x, (list, tuple)) else (str(x), "") for x in (g.get("left_out_automatically") or [])])
     run.cal, run.detections, run.filter_results = cal, dets, filts

@@ -16,8 +16,9 @@
 >   `src/capture/bitflow.py`). For them Capture switches the FrameStart trigger off while
 >   it has the camera and puts it back on close (crash-safe); it refuses while ARAN's FR
 >   Video Service runs. Exposure and frame rate are never changed.
-> - **Auto grab** (Smart: board found + still + new spot; Timer: every N s) for one person
->   holding the board. Uses the calibration app's own board finder.
+> - **Take 50 photos** (2026-11-14, replaced Auto grab Smart/Timer): one every 2 s, no board
+>   finding; the calibration app grades them and its **Take 50 more** reopens Capture on
+>   the same folder (`--add-to`).
 > - **Hand-over:** "Open in calibration app" passes `--camera` too; the calibration app
 >   picks that camera and keeps the folder.
 > - The 12x8 chessboard has its own finder in the calibration app (`src/marker_finder.py`).
@@ -138,8 +139,8 @@ One main window, `CaptureWindow` (`src/capture/window.py`):
 - Centre: live preview, scaled to fit, never stretched (keep aspect ratio). Under it:
   camera, port, serial, expected size, delivered size, frames/s.
 - Bottom: base-folder picker, photo count, big **Grab** button, **Countdown**
-  button (shows 3-2-1 big over the preview), **Auto grab** with mode (Smart / Timer),
-  interval (Timer) and **Target** *(added)*, last-photo thumbnail strip,
+  button (shows 3-2-1 big over the preview), **Take 50 photos** with the count and the
+  seconds between photos *(added)*, last-photo thumbnail strip,
   "Open in calibration app", "Advanced…".
 - Status line for plain-English messages.
 - Top bar also has a **"Use the van database"** tick box (as on the start screen);

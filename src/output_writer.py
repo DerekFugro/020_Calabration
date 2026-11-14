@@ -151,6 +151,7 @@ def write_yaml(
             "repeatability_p95_mrad": None if rp is None else round(rp.est_error_p95_mrad, 3),
             "repeatability_at_10m_mm": None if rp is None else round(rp.at_10m_mm, 1),
             "more_photos_needed": int(g.more_photos),
+            "missing": list(getattr(g, "missing", [])),
             "dot_edge_blur_median_px": None if math.isnan(getattr(g, "blur_median_px", float("nan")))
                                        else round(g.blur_median_px, 2),
             "blurry_photos": [Path(p).name for p, _ in getattr(g, "blurry_images", [])],

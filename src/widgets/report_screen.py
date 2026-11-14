@@ -4,7 +4,8 @@ Top, always in view: the one line the crew needs (PASS — you're done, or
 NOT PASSED — get N more photos) and the 3x3 squares, each saying "Done" or
 how many more photos to take there and how.  Everything below is
 information only: why, photos left out, the numbers.
-Emits save_requested() and new_calibration_requested().
+Emits save_requested(), new_calibration_requested() and take_more_requested() (the
+"Take 50 more" button: shown when another batch of photos can fix a NOT PASSED).
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from PySide6.QtWidgets import (
 from src.board import BoardConfig
 from src.calibrator import CalibrationResult
 from src.coverage import GOOD, POOR, WEAK, compute_grid, limits_text
-from src.grading import REPEAT_MAX_MRAD
+from src.grading import PHOTO_BATCH, REPEAT_MAX_MRAD
 from src.styles import (
     BUTTON_H, MARGIN, SPACING,
     C_TEXT_DIM,
@@ -55,6 +56,7 @@ class ReportScreen(QWidget):
     save_requested                  = Signal()
     new_calibration_requested       = Signal()
     check_requested                 = Signal()      # loaded result: process the photos again and compare
+    take_more_requested             = Signal()      # NOT PASSED: open Capture to add another batch here
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -175,6 +177,13 @@ class ReportScreen(QWidget):
                                      "and compare with the saved lens.")
         self.check_button.clicked.connect(self.check_requested.emit)
         self.check_button.hide()
+        self.more_button = QPushButton(f"Take {PHOTO_BATCH} more")
+        self.more_button.setFixedHeight(BUTTON_H)
+        self.more_button.setToolTip(f"Open SurveyorCapture on this camera and folder to take another {PHOTO_BATCH} "
+                                    "photos; then open them here again.")
+        self.more_button.clicked.connect(self.take_more_requested.emit)
+        self.more_button.hide()
+        self.wants_more = False
 
         # ── Outlier panel (hidden until bad images found) ──────────────────
         self.outlier_group   = QGroupBox("Photos left out automatically")
@@ -361,6 +370,7 @@ class ReportScreen(QWidget):
         """Show the grade: PASS, or what to shoot next."""
         import html
         g = getattr(cal_result, "grade", None)
+        self.wants_more = bool(g is not None and getattr(g, "wants_more", False))
         if g is None:
             self.grade_banner.hide(); self.grade_details.hide()
             return

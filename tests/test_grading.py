@@ -88,6 +88,9 @@ def test_pixel_error_alone_does_not_fail_but_few_points_does(monkeypatch):
     monkeypatch.setattr(gr, "compute_grid", lambda c: grid("points"))
     g = gr.grade(cal)
     assert not g.passed and any("Bottom-left" in r for r in g.reasons)
+    # 2026-11-14: NOT PASSED asks for another batch of 50 and says what is missing
+    assert g.wants_more and g.missing == ["the board in Bottom-left"]
+    assert g.action == "NOT PASSED — take another 50 photos. Missing: the board in Bottom-left."
 
 
 def test_squares_say_done_or_how_many_photos():
@@ -104,7 +107,7 @@ def test_squares_say_done_or_how_many_photos():
     assert rep.area_todo(a) == ("+17 photos", "board in this area, tilt the board 20-45°")
     assert rep.area_todo(b) == ("Done", "")
     assert rep.area_todo(c) == ("OK", "")
-    assert rep.action.startswith("NOT PASSED") and "17 more photos" in rep.action
+    assert rep.action.startswith("NOT PASSED") and "take another 50 photos" in rep.action and rep.wants_more
     rep.passed = True
     assert "you're done" in rep.action
 
@@ -116,7 +119,11 @@ def test_lens_steady_box_and_banner():
     rep.repeatability = Repeatability(est_error_p95_mrad=1.5, est_error_mean_mrad=1.0,
                                       halves_raw_mean_mrad=1.0, images_per_half=50)
     assert rep.steady[0] == "poor" and rep.steady[1] == "15 mm"
-    assert "lens isn't steady" in rep.action
+    import src.grading as gr
+    assert "steadier lens" in "; ".join(gr._missing(rep)) and rep.wants_more
+    rep.hard_stops = ["x"]
+    assert not rep.wants_more and "Retake" in rep.action
+    rep.hard_stops = []
     rep.repeatability = Repeatability(0.6, 0.4, 0.4, 50)
     assert rep.steady[0] == "good"
     rep.repeatability = None

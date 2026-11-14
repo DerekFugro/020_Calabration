@@ -1,80 +1,16 @@
-"""Auto grab (Derek 2026-11-14): save when the board is found, held still, in a new spot;
-stop at the target.  Logic with made-up board points; the window with a fake camera."""
+"""Take photos (Derek 2026-11-14): a batch of 50, one every 2 s, no board finding; only the
+card's "no signal" picture is skipped.  Adding mode: the calibration app's "Take 50 more"
+puts new photos straight into the folder it graded.  The window with a fake camera."""
+import json
 import time
 
 import numpy as np
 import pytest
 
 from src.capture import autograb
-from src.capture.autograb import AutoGrabLogic
 
-W = 1920
+PORT = "Video (00-1 Pro Capture Dual HDMI 4K+)"
 
-
-def board_at(x, y, size=400, tilt=0.0, n=(11, 7)):
-    gx, gy = np.meshgrid(np.linspace(0, size, n[0]), np.linspace(0, size * 0.6 * (1 - tilt), n[1]))
-    return np.c_[gx.ravel() + x, gy.ravel() + y]
-
-
-def test_saves_only_after_holding_still():
-    lg = AutoGrabLogic(target=5)
-    p = board_at(100, 100)
-    assert lg.look(p, W)[0] == "moving"           # first look: not known to be still yet
-    assert lg.look(p, W)[0] == "hold still"       # still once
-    what, sig = lg.look(p, W)
-    assert what == "save"                         # still twice in a row
-    lg.saved_one(sig)
-
-
-def test_moving_board_is_never_saved():
-    lg = AutoGrabLogic()
-    for k in range(10):
-        assert lg.look(board_at(100 + 40 * k, 100), W)[0] == "moving"
-
-
-def test_same_spot_is_not_saved_twice_but_a_new_spot_or_tilt_is():
-    lg = AutoGrabLogic()
-    for _ in range(3):
-        what, sig = lg.look(board_at(100, 100), W)
-    assert what == "save"; lg.saved_one(sig)
-    for _ in range(3):
-        what, _ = lg.look(board_at(102, 101), W)  # a hair away: same spot
-    assert what == "same spot"
-    for _ in range(3):
-        what, sig = lg.look(board_at(100, 100, tilt=0.35), W)   # same place, tilted
-    assert what == "save"; lg.saved_one(sig)
-    for _ in range(3):
-        what, sig = lg.look(board_at(1300, 600), W)              # another corner
-    assert what == "save"
-
-
-def test_board_lost_starts_over_and_target_stops():
-    lg = AutoGrabLogic(target=1)
-    lg.look(board_at(100, 100), W); lg.look(board_at(100, 100), W)
-    assert lg.look(None, W)[0] == "no board"
-    assert lg.look(board_at(100, 100), W)[0] == "moving"          # the still count restarted
-    lg.look(board_at(100, 100), W)
-    what, sig = lg.look(board_at(100, 100), W)
-    lg.saved_one(sig)
-    assert lg.look(board_at(900, 500), W)[0] == "done"
-
-
-def test_finds_a_real_chessboard_like_the_calibration_app():
-    import cv2
-    from src.board import BoardConfig
-    b = BoardConfig()                                              # Chessboard 12 x 8
-    sq = 60
-    img = np.full((8 * sq + 200, 12 * sq + 200), 255, np.uint8)
-    for r in range(8):
-        for c in range(12):
-            if (r + c) % 2 == 0:
-                img[100 + r * sq:100 + (r + 1) * sq, 100 + c * sq:100 + (c + 1) * sq] = 0
-    pts = autograb.find_board(img, b)
-    assert pts is not None and pts.shape == (77, 2)
-    assert autograb.find_board(np.full((400, 600), 180, np.uint8), b) is None
-
-
-# ── the window, end to end, with a fake camera and a scripted board ─────────────────────
 
 @pytest.fixture(scope="module")
 def app():
@@ -92,96 +28,104 @@ def wait(app, cond, s=10.0):
     return False
 
 
-def test_window_auto_grab_saves_three_spots_and_stops(app, tmp_path, monkeypatch):
+def _window(app, tmp_path, **kw):
     from src.capture.source import FakeSource
     from src.capture.window import CaptureWindow
-    spots = [board_at(100, 100), board_at(1200, 100), board_at(600, 600)]
-    looks = {"n": 0}
-
-    def scripted(gray, board):
-        looks["n"] += 1
-        return spots[min((looks["n"] - 1) // 4, len(spots) - 1)]     # 4 looks per spot
-    monkeypatch.setattr(autograb, "find_board", scripted)
-    monkeypatch.setattr(autograb, "library_boards", lambda: [type("B", (), {"name": "Chessboard 12x8"})()])
-    monkeypatch.setattr(autograb, "LOOK_EVERY_S", 0.01)
-    w = CaptureWindow(use_db=False, folder=str(tmp_path), names=["Video (00-1 Pro Capture Dual HDMI 4K+)"],
-                      source_factory=lambda cam, index: FakeSource(camera="ROW"))
+    fake = kw.pop("fake", {})
+    w = CaptureWindow(use_db=False, folder=str(tmp_path), names=[PORT],
+                      source_factory=lambda cam, index: FakeSource(camera="ROW", **fake), **kw)
     w.camera_combo.setCurrentIndex(0)
     w.name_combo.setCurrentText("ROW"); w.serial_edit.setText("88888888")
     w.size_combo.setCurrentText("1920 x 1080")
-    assert wait(app, lambda: w.auto_btn.isEnabled())
-    w.target_spin.setValue(5); w.target_spin.setValue(3)          # spin minimum is 5; set directly below
-    monkeypatch.setattr(w.target_spin, "value", lambda: 3)
-    w._toggle_auto()
-    assert w.auto_btn.text() == "Stop auto" and not w.grab_btn.isEnabled()
-    assert wait(app, lambda: w._auto is None, 15)                 # stopped by itself at the target
-    photos = list(tmp_path.glob("ROW_88888888_*/ROW_*.jpg"))
-    assert len(photos) == 3 and w.count_label.text() == "3 photos"
-    assert "done" in w.status.text().lower() and w.auto_btn.text() == "Auto grab"
+    return w
+
+
+def test_defaults_are_50_photos_every_2_seconds_and_no_board_finder(app, tmp_path):
+    assert (autograb.BATCH, autograb.EVERY_S) == (50, 2.0)
+    assert not hasattr(autograb, "find_board") and not hasattr(autograb, "AutoGrabLogic")
+    w = _window(app, tmp_path)
+    assert w.target_spin.value() == 50 and w.every_spin.value() == 2.0
+    assert w.auto_btn.text() == "Take 50 photos" and not hasattr(w, "auto_mode")
+    w.target_spin.setValue(30); assert w.auto_btn.text() == "Take 30 photos"
     w.close()
 
 
-def test_window_stop_button_and_camera_change_stop_auto(app, tmp_path, monkeypatch):
-    from src.capture.source import FakeSource
-    from src.capture.window import CaptureWindow
-    monkeypatch.setattr(autograb, "find_board", lambda g, b: None)            # never finds a board
-    monkeypatch.setattr(autograb, "library_boards", lambda: [])
-    monkeypatch.setattr(autograb, "LOOK_EVERY_S", 0.01)
-    w = CaptureWindow(use_db=False, folder=str(tmp_path), names=["Video (00-1 Pro Capture Dual HDMI 4K+)"],
-                      source_factory=lambda cam, index: FakeSource(camera="ROW"))
-    w.camera_combo.setCurrentIndex(0)
-    w.name_combo.setCurrentText("ROW"); w.serial_edit.setText("88888888")
-    w.size_combo.setCurrentText("1920 x 1080")
+def test_takes_the_batch_and_stops(app, tmp_path, monkeypatch):
+    w = _window(app, tmp_path)
     assert wait(app, lambda: w.auto_btn.isEnabled())
-    w._toggle_auto()
-    assert wait(app, lambda: "BOARD NOT FOUND" in w.auto_label.text() or "LOOKING" in w.auto_label.text(), 5)
-    w._toggle_auto()                                                          # Stop auto
-    assert w._auto is None and w.auto_btn.text() == "Auto grab" and w.auto_label.isHidden()
-    w._toggle_auto()
-    w._camera_chosen()                                                        # camera change stops it
-    assert w._auto is None
-    assert not list(tmp_path.rglob("*.jpg"))
-    w.close()
-
-
-def test_window_timer_saves_every_few_seconds_without_a_board(app, tmp_path, monkeypatch):
-    """Timer mode: saves no matter what (no board finder), stops at the target."""
-    from src.capture.source import FakeSource
-    from src.capture.window import CaptureWindow
-    monkeypatch.setattr(autograb, "find_board", lambda g, b: pytest.fail("timer mode must not look for the board"))
-    w = CaptureWindow(use_db=False, folder=str(tmp_path), names=["Video (00-1 Pro Capture Dual HDMI 4K+)"],
-                      source_factory=lambda cam, index: FakeSource(camera="ROW"))
-    w.camera_combo.setCurrentIndex(0)
-    w.name_combo.setCurrentText("ROW"); w.serial_edit.setText("88888888")
-    w.size_combo.setCurrentText("1920 x 1080")
-    assert wait(app, lambda: w.auto_btn.isEnabled())
-    assert w.every_spin.isHidden()
-    w.auto_mode.setCurrentText("Timer"); assert not w.every_spin.isHidden() and w.every_spin.value() == 1.0
+    w.every_spin.setValue(1.0)
     monkeypatch.setattr(w.target_spin, "value", lambda: 4)
     t0 = time.time()
     w._toggle_auto()
-    assert "TIMER" in w.auto_label.text()
+    assert "4 PHOTOS, ONE EVERY 1 S" in w.auto_label.text() and w.auto_btn.text() == "Stop"
+    assert not w.grab_btn.isEnabled()
     assert wait(app, lambda: w._auto is None, 15)
-    assert len(list(tmp_path.glob("ROW_88888888_*/ROW_*.jpg"))) == 4 and time.time() - t0 >= 2.8   # ~1 s apart (the default)
-    assert "done" in w.status.text().lower()
+    assert len(list(tmp_path.glob("ROW_88888888_*/ROW_*.jpg"))) == 4 and time.time() - t0 >= 2.8   # ~1 s apart
+    assert "Done: 4 photos" in w.status.text() and w.auto_btn.text() == "Take 4 photos"
     w.close()
 
 
-def test_timer_skips_no_signal(app, tmp_path):
-    from src.capture.source import FakeSource
-    from src.capture.window import CaptureWindow
-    w = CaptureWindow(use_db=False, folder=str(tmp_path), names=["Video (00-1 Pro Capture Dual HDMI 4K+)"],
-                      source_factory=lambda cam, index: FakeSource(camera="ROW", no_signal=True))
-    w.camera_combo.setCurrentIndex(0)
-    w.name_combo.setCurrentText("ROW"); w.serial_edit.setText("88888888")
-    w.size_combo.setCurrentText("1920 x 1080")
+def test_stop_button_and_camera_change_stop_it(app, tmp_path):
+    w = _window(app, tmp_path)
+    assert wait(app, lambda: w.auto_btn.isEnabled())
+    w.every_spin.setValue(30.0)
+    w._toggle_auto()
+    assert wait(app, lambda: w._count == 1, 5)                   # the first photo at once
+    w._toggle_auto()                                              # Stop
+    assert w._auto is None and w.auto_label.isHidden() and w.status.text() == "Stopped."
+    w._toggle_auto()
+    w._camera_chosen()                                            # camera change stops it
+    assert w._auto is None
+    w.close()
+
+
+def test_no_signal_is_skipped(app, tmp_path):
+    w = _window(app, tmp_path, fake={"no_signal": True})
     assert wait(app, lambda: w._delivered is not None)
-    from src.capture.autograb import AutoGrabThread
-    a = AutoGrabThread(w._worker, 3, every_s=0.5)
+    a = autograb.AutoGrabThread(w._worker, 3, every_s=0.5)
     seen = []
     a.state.connect(lambda what, n, t: seen.append(what)); a.want_save.connect(lambda f, s: seen.append("asked"))
     a.start()
     assert wait(app, lambda: seen.count("no picture") >= 2, 5)
     a.stop()
     assert "asked" not in seen and not list(tmp_path.rglob("*.jpg"))
+    w.close()
+
+
+def test_never_saves_the_same_frame_twice():
+    frame = np.zeros((10, 10, 3), np.uint8)
+    worker = type("W", (), {"latest": lambda self: frame})()
+    a = autograb.AutoGrabThread(worker, 3)
+    assert a._new_frame() is frame and a._new_frame() is None
+
+
+def test_adding_mode_saves_straight_into_the_graded_folder(app, tmp_path, monkeypatch):
+    graded = tmp_path / "ROW_88888888_20261114_120000"; graded.mkdir()
+    (graded / "ROW_old.jpg").write_bytes(b"x")
+    base = tmp_path / "base"; base.mkdir()
+    from PySide6.QtCore import QSettings
+    QSettings("SidewalkProfiler", "SurveyorCapture").setValue("folder", str(base))
+    w = _window(app, tmp_path, camera="ROW", add_to=str(graded))
+    assert w.folder_title.text() == "Adding to:" and w.folder_edit.text() == str(graded)
+    assert w.folder_edit.isReadOnly() and not w.browse_btn.isEnabled()
+    assert wait(app, lambda: w.grab_btn.isEnabled())
+    w.every_spin.setValue(1.0)
+    monkeypatch.setattr(w.target_spin, "value", lambda: 2)
+    w._toggle_auto()
+    assert wait(app, lambda: w._auto is None, 15)
+    new = [p for p in graded.glob("ROW_*.jpg") if p.name != "ROW_old.jpg"]
+    assert len(new) == 2 and not [d for d in graded.iterdir() if d.is_dir()]     # no new subfolder
+    log = json.loads(next(graded.glob("CAPTURE_*.json")).read_text(encoding="utf-8"))
+    assert log["added_to_folder"] is True and len(log["photos"]) == 2
+    assert QSettings("SidewalkProfiler", "SurveyorCapture").value("folder") == str(base)   # base folder kept
+    w.close()
+
+
+def test_adding_mode_refuses_another_camera(app, tmp_path):
+    graded = tmp_path / "RearLeft_1_20261114_120000"; graded.mkdir()
+    w = _window(app, tmp_path, camera="RearLeft", add_to=str(graded))      # but the input is named ROW
+    assert wait(app, lambda: w.grab_btn.isEnabled())
+    w._grab(False)
+    assert "These photos are for RearLeft" in w.status.text()
+    assert not list(graded.glob("*.jpg"))
     w.close()

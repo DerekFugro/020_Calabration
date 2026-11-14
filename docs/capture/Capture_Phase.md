@@ -237,6 +237,14 @@ stops at a Target. **Timer:** saves every N seconds (default 2) whatever is in i
 photos: kept 29 (the app used 31); Timer used for a 50-photo GOX set (38 usable with the
 board finder, PASS). Phase 6 can reuse its board finding for the live coverage display.
 
+**Changed 2026-11-14 (Derek): Smart removed** - live board finding while collecting could
+be frustrating. Capture now has **Take 50 photos** (one every 2 s, no board finding;
+`autograb.BATCH`, `EVERY_S`). The calibration app grades the folder; a NOT PASSED that is
+not a hard stop says what is missing (`grading.GradeReport.missing`) and shows **Take 50
+more**, which starts Capture with `--camera` and `--add-to <folder>`: new photos go
+straight into that folder (no new subfolder; only that camera; the base folder setting is
+kept). Tests: `tests/test_capture_autograb.py`, `tests/test_take_more.py`.
+
 ## Phase 6 — Live board guidance (later)
 **Complexity:** Complex
 **Goal:** while previewing, show board found / 3×3 coverage filled / blur / count.

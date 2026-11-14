@@ -24,11 +24,13 @@ def capture_present(prog: str, args: list[str], cwd: str) -> bool:
     return Path(prog).exists()
 
 
-def capture_command(van: str, use_db: bool) -> tuple[str, list[str], str]:
+def capture_command(van: str, use_db: bool, camera: str = "", add_to: str = "") -> tuple[str, list[str], str]:
     """(program, arguments, working folder) that start SurveyorCapture as its own process.
     Installed: SurveyorCapture.exe beside this exe.  From source: python -m src.capture.
+    add_to: the report's "Take 50 more" - Capture puts the new photos straight into that folder.
     Never imports src.capture (docs/capture: a capture-card hang must not freeze this app)."""
-    args = (["--van", van] if van else []) + ([] if use_db else ["--no-db"])
+    args = ((["--van", van] if van else []) + ([] if use_db else ["--no-db"])
+            + (["--camera", camera] if camera else []) + (["--add-to", add_to] if add_to else []))
     if getattr(sys, "frozen", False):
         exe = Path(sys.executable).with_name("SurveyorCapture.exe")
         return str(exe), args, str(exe.parent)

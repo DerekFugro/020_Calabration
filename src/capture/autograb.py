@@ -1,22 +1,14 @@
-"""autograb.py - Auto grab: Capture saves a photo by itself, for one person holding the board.
+"""autograb.py - Take photos: Capture saves a batch by itself, for one person holding the board.
 
-Derek, 2026-11-14: "I can not move the board and press grab by myself."  His choices:
-  * smart: save only when the whole board is found, held still, and in a new spot;
-  * screen only (big text on the picture, no sound);
-  * stop by itself at a target count (default 40); the button stops it any time.
+Derek, 2026-11-14: "I can not move the board and press grab by myself."
+Derek, 2026-11-14 (later): no board finding while collecting - it could be frustrating.  Take
+a batch of 50 photos, one every 2 s, no matter what (only the card's "no signal" picture is
+skipped), and let the calibration app sort them: photos it can't use go to NotUsed, and if
+it needs more it asks for another 50 (its "Take 50 more" button opens Capture on the same
+folder).  The old "Smart" mode (board found + still + new spot) is gone.
 
-Timer mode (Derek, 2026-11-14, while the board finder misses many GOX poses): save a
-photo every N seconds (default 1) no matter what - only the card's "no signal" picture is
-skipped - and sort them out afterwards in the calibration app.
-
-A look runs about twice a second on the latest full frame (never slows the preview);
-the photo saved is the exact frame that was looked at.  Only a NEW frame is looked at or
-saved: Magewell inputs are read once a second, and the same frame looked at twice would
-count as "held still" (Smart) or be saved twice (Timer).  So Smart needs the board held
-still for about 2 s on those inputs.
-Board finding uses the same settings as the calibration app's detector (src/detector.py:
-findChessboardCornersSB, 60 px white border; dot boards: src/dot_detector), so a photo
-auto grab keeps is one the calibration app can read.
+Only a NEW frame is saved: Magewell inputs are read once a second, and the same frame
+must never be saved twice.  The photo saved is the exact frame that was taken.
 """
 
 from __future__ import annotations
@@ -24,135 +16,27 @@ from __future__ import annotations
 import threading
 import time
 
-import cv2
-import numpy as np
 from PySide6.QtCore import QThread, Signal
 
-# A board pose, compared item by item, each on its own scale:
-#   place  x, y      fraction of the picture width
-#   size   log(board diagonal / picture width)   (0.1 = about 10 % bigger or smaller)
-#   shape  board width / diagonal, height / diagonal  (tilt squashes one of them)
-#   turn   angle of the board's long side, radians
-NEW_SPOT = np.array([0.05, 0.05, 0.10, 0.04, 0.04, 0.17])     # any one this far = a new photo
-STILL = np.array([0.004, 0.004, 0.01, 0.004, 0.004, 0.017])   # all within this = held still
-STILL_LOOKS = 2        # still this many looks in a row before saving
-TARGET = 40
-LOOK_EVERY_S = 0.4
+BATCH = 50             # photos per batch (the calibration app asks for this many more)
+EVERY_S = 2.0          # seconds between photos
 
 # what the crew reads on the picture
-SAY = {"no picture": "NO PICTURE", "no board": "BOARD NOT FOUND", "moving": "HOLD STILL", "hold still": "HOLD STILL",
-       "same spot": "MOVE TO A NEW SPOT", "save": "SAVING...", "done": "DONE"}
-
-
-def signature(points, width: int) -> np.ndarray:
-    """[x, y, size, width share, height share, turn] of the board in the picture (see NEW_SPOT)."""
-    p = np.asarray(points, float).reshape(-1, 2)
-    c = p.mean(0)
-    span = p.max(0) - p.min(0)
-    diag = max(float(np.hypot(*span)), 1e-6)
-    vals, vecs = np.linalg.eigh(np.cov((p - c).T))
-    ax = vecs[:, int(np.argmax(vals))]
-    turn = float(np.arctan2(ax[1], ax[0]))
-    turn = (turn + np.pi / 2) % np.pi - np.pi / 2              # the long side has no front or back
-    return np.array([c[0] / width, c[1] / width, np.log(diag / width), span[0] / diag, span[1] / diag, turn])
-
-
-def _apart(a: np.ndarray, b: np.ndarray, scale: np.ndarray) -> float:
-    """How far apart two poses are, in units of `scale` (>= 1 = past the threshold)."""
-    d = np.abs(a - b)
-    d[5] = min(d[5], np.pi - d[5])                              # turn wraps around
-    return float(np.max(d / scale))
-
-
-class AutoGrabLogic:
-    """Decides, look by look, whether to save.  No camera, no Qt: easy to test."""
-
-    def __init__(self, target: int = TARGET, still_looks: int = STILL_LOOKS) -> None:
-        self.target, self.still_looks = target, still_looks
-        self.saved: list[np.ndarray] = []
-        self._prev = None
-        self._still = 0
-
-    @property
-    def count(self) -> int:
-        return len(self.saved)
-
-    def look(self, points, width: int) -> tuple[str, np.ndarray | None]:
-        """('no board' | 'moving' | 'hold still' | 'same spot' | 'save' | 'done', signature)"""
-        if self.count >= self.target:
-            return "done", None
-        if points is None or len(np.asarray(points).reshape(-1, 2)) < 4:
-            self._prev, self._still = None, 0
-            return "no board", None
-        sig = signature(points, width)
-        if self._prev is None or _apart(sig, self._prev, STILL) > 1.0:
-            self._prev, self._still = sig, 0
-            return "moving", sig
-        self._prev = sig
-        self._still += 1
-        if self._still < self.still_looks:
-            return "hold still", sig
-        if any(_apart(sig, s, NEW_SPOT) < 1.0 for s in self.saved):
-            return "same spot", sig
-        return "save", sig
-
-    def saved_one(self, sig: np.ndarray) -> None:
-        self.saved.append(sig)
-        self._still = 0
-
-
-def find_board(gray: np.ndarray, board):
-    """Board points in this picture (N x 2), or None.  Same finders as the calibration app."""
-    h, w = gray.shape[:2]
-    if getattr(board, "is_dots", False):
-        from src.dot_detector import detect_blobs, match_dots
-        m = match_dots(detect_blobs(gray), board.dot_xy_mm, image_size=(w, h))
-        return None if m is None else np.asarray(m.image_points, float).reshape(-1, 2)
-    from src.detector import find_chessboard, prepare_chessboard_gray
-    corners, _ids = find_chessboard(prepare_chessboard_gray(gray), board)
-    return None if corners is None else corners.reshape(-1, 2)
-
-
-def pick_board(gray: np.ndarray, boards):
-    """The first library board found in this picture: (board, points) or (None, None)."""
-    for b in boards:
-        try:
-            pts = find_board(gray, b)
-        except Exception:  # noqa: BLE001 - a broken board file must not stop the others
-            pts = None
-        if pts is not None:
-            return b, pts
-    return None, None
-
-
-def library_boards():
-    from src.boards import list_boards
-    return list_boards()
+SAY = {"no picture": "NO PICTURE", "saved": "SAVED", "done": "DONE"}
 
 
 class AutoGrabThread(QThread):
-    """Looks at the GrabWorker's latest frame; asks the window to save; waits for the answer."""
-    state = Signal(str, int, int)              # what to say, photos saved, target
-    want_save = Signal(object, object)         # frame, signature
-    board_found = Signal(str)                  # board name
+    """Asks the window to save the GrabWorker's newest frame every every_s seconds; stops at target."""
+    state = Signal(str, int, int)              # 'no picture' | 'saved' | 'done', photos saved, target
+    want_save = Signal(object, object)         # frame, None
 
-    def __init__(self, worker, target: int = TARGET, boards=None, parent=None, every_s: float | None = None) -> None:
+    def __init__(self, worker, target: int = BATCH, parent=None, every_s: float = EVERY_S) -> None:
         super().__init__(parent)
-        self.worker, self.logic = worker, AutoGrabLogic(target)
-        self.every_s = every_s                 # Timer mode: save every this many seconds
-        self._boards, self.board = boards, None
+        self.worker, self.target, self.every_s = worker, target, every_s
         self._stop = False
         self._answer = threading.Event()
-        self._answer_ok, self._answer_sig = False, None
-        self._last = None                      # the last frame looked at / saved (never twice)
-
-    def _new_frame(self):
-        """The worker's latest frame if it is one not seen yet, else None."""
-        frame = self.worker.latest() if self.worker is not None else None
-        if frame is None or frame is self._last:
-            return None
-        self._last = frame
-        return frame
+        self._answer_ok = False
+        self._last = None                      # the last frame saved (never twice)
 
     def stop(self) -> None:
         self._stop = True
@@ -164,6 +48,14 @@ class AutoGrabThread(QThread):
         self._answer_ok = ok
         self._answer.set()
 
+    def _new_frame(self):
+        """The worker's latest frame if it is one not seen yet, else None."""
+        frame = self.worker.latest() if self.worker is not None else None
+        if frame is None or frame is self._last:
+            return None
+        self._last = frame
+        return frame
+
     def _ask_save(self, frame) -> bool:
         """Ask the window to save this frame; wait for its answer."""
         self._answer.clear()
@@ -171,9 +63,9 @@ class AutoGrabThread(QThread):
         self._answer.wait(15)
         return not self._stop and self._answer_ok
 
-    def _run_timer(self) -> None:
+    def run(self) -> None:
         from src.capture.nosignal import is_no_signal
-        n, target = 0, self.logic.target
+        n, target = 0, self.target
         next_t = time.monotonic()
         while not self._stop and n < target:
             now = time.monotonic()
@@ -189,38 +81,3 @@ class AutoGrabThread(QThread):
             if self._ask_save(frame):
                 n += 1
                 self.state.emit("done" if n >= target else "saved", n, target)
-
-    def run(self) -> None:
-        if self.every_s:
-            self._run_timer()
-            return
-        if self._boards is None:
-            self._boards = library_boards()
-        while not self._stop:
-            t0 = time.monotonic()
-            frame = self._new_frame()
-            if frame is not None:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
-                if self.board is None:
-                    self.board, pts = pick_board(gray, self._boards)
-                    if self.board is not None:
-                        self.board_found.emit(self.board.name)
-                else:
-                    pts = find_board(gray, self.board)
-                what, sig = self.logic.look(pts, gray.shape[1])
-                self.state.emit(what, self.logic.count, self.logic.target)
-                if what == "done":
-                    return
-                if what == "save":
-                    self._answer.clear()
-                    self.want_save.emit(frame, sig)
-                    self._answer.wait(15)
-                    if self._stop:
-                        return
-                    if self._answer_ok:
-                        self.logic.saved_one(sig)
-                        self.state.emit("done" if self.logic.count >= self.logic.target else "saved",
-                                        self.logic.count, self.logic.target)
-                        if self.logic.count >= self.logic.target:
-                            return
-            time.sleep(max(0.0, LOOK_EVERY_S - (time.monotonic() - t0)))

@@ -45,6 +45,7 @@ class OneCameraScreen(QWidget):
         self.report_screen.save_requested.connect(self._save)
         self.report_screen.new_calibration_requested.connect(self._back_to_setup)
         self.report_screen.check_requested.connect(self._check)
+        self.report_screen.take_more_requested.connect(self._take_more)
 
         # Buttons in the top bar row, like Load Extrinsic (Derek, 2026-11-11); each shows only when it applies.
         self._report_pdf = None
@@ -54,7 +55,8 @@ class OneCameraScreen(QWidget):
         r, s = self.report_screen, self.setup_screen
         self.actions = QWidget()
         al = QHBoxLayout(self.actions); al.setContentsMargins(0, 0, 0, 0)
-        for b in (r.new_cal_button, r.view_button, r.check_button, s.run_button, r.save_button, self.report_btn):
+        for b in (r.new_cal_button, r.more_button, r.view_button, r.check_button, s.run_button, r.save_button,
+                  self.report_btn):
             al.addWidget(b)
         self.stack.currentChanged.connect(lambda _i: self._sync_buttons())
         self._sync_buttons()
@@ -74,6 +76,7 @@ class OneCameraScreen(QWidget):
         r.new_cal_button.setVisible(on_report)
         r.view_button.setVisible(on_report)
         r.save_button.setVisible(on_report)
+        r.more_button.setVisible(on_report and r.wants_more and self._run is not None)
         self.setup_screen.run_button.setVisible(not on_report)   # with a report: New Calibration / Check by re-running
         if not on_report:
             r.check_button.hide()
@@ -133,6 +136,27 @@ class OneCameraScreen(QWidget):
                                     camera=camera_from_name(self._role) or self._role, serial=self._serial)
         self.stack.setCurrentWidget(self.report_screen)
         self._sync_buttons()
+
+    def _take_more(self) -> bool:
+        """NOT PASSED: open SurveyorCapture on this camera, adding photos straight into this folder."""
+        run = self._run
+        if run is None:
+            return False
+        from src.van_scan import camera_from_name, van_from_path
+        from src.widgets.launcher import capture_command, capture_present
+        from PySide6.QtCore import QProcess
+        cam = camera_from_name(self._role) or self._role
+        prog, args, cwd = capture_command(self.van or van_from_path(run.folder), self.bar.use_db,
+                                          camera=cam, add_to=str(run.folder))
+        if not capture_present(prog, args, cwd):
+            QMessageBox.warning(self, "Take more photos", f"SurveyorCapture is not installed with this copy "
+                                                          f"of the app.\nLooked for: {prog}")
+            return False
+        res = QProcess.startDetached(prog, args, cwd)
+        ok = res[0] if isinstance(res, tuple) else bool(res)
+        self.status.emit(f"SurveyorCapture opened: take the photos, then press Open in calibration app."
+                         if ok else "SurveyorCapture could not be started.")
+        return ok
 
     # Used by Load Extrinsic: the lens just calibrated here.
     @property

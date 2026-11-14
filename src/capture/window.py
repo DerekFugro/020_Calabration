@@ -5,7 +5,10 @@ Layout (docs/capture/Capture_Instructions.md):
           (Windows inputs only: which camera it is, its serial, its size)
   centre  live preview, never stretched; camera, port, serial, expected / delivered size, and
           what the camera itself sends (Magewell: size, frame rate; updated once a second)
-  bottom  folder, photo count, Grab, Countdown, last photos, Open in calibration app, Advanced...
+  bottom  folder, photo count, Grab, Countdown, Take 50 photos (one every 2 s), last photos,
+          Open in calibration app, Advanced...
+Adding mode (add_to / --add-to): the calibration app's "Take 50 more" opens Capture on the photo
+folder it graded; new photos go straight into that folder (no new subfolder).
   status  plain words
 Read only towards ARAN: opens, reads and closes one input; changes no settings.
 When the camera's own size is not the ACS (database) size the card is scaling the picture:
@@ -102,9 +105,10 @@ class CaptureWindow(QMainWindow):
     for tests and PCs without a card; otherwise the real DirectShow inputs are used."""
 
     def __init__(self, van: str = "", camera: str = "", folder: str = "", use_db: bool = True,
-                 source_factory=None, names: list[str] | None = None, parent=None) -> None:
+                 source_factory=None, names: list[str] | None = None, parent=None, add_to: str = "") -> None:
         super().__init__(parent)
         self._args = (van, camera, folder, use_db)
+        self._add_to = Path(add_to) if add_to else None   # photos go straight into this folder
         self._factory, self._names = source_factory, names
         self._cams: list = []
         self._cam = None
@@ -154,16 +158,16 @@ class CaptureWindow(QMainWindow):
         self.count_label = QLabel("0 photos")
         self.grab_btn = QPushButton("Grab")
         self.countdown_btn = QPushButton("Countdown")
-        self.auto_btn = QPushButton("Auto grab")
-        self.auto_btn.setToolTip("Saves a photo by itself each time the board is found, held still, "
-                                 "and in a new spot. Stops at the target count.")
-        self.auto_mode = QComboBox(); self.auto_mode.addItems(["Smart", "Timer"])
-        self.auto_mode.setToolTip("Smart: saves when the board is found, still and in a new spot.\n"
-                                  "Timer: saves a photo every few seconds no matter what.")
+        from src.capture.autograb import BATCH, EVERY_S
+        self.auto_btn = QPushButton(f"Take {BATCH} photos")
+        self.auto_btn.setToolTip("Saves a photo by itself every few seconds - move the board between photos. "
+                                 "Stops at the count. The calibration app sorts them out.")
+        self.every_label = QLabel("every")
         self.every_spin = QDoubleSpinBox(); self.every_spin.setRange(1.0, 60.0); self.every_spin.setSingleStep(0.5)
-        self.every_spin.setValue(1.0); self.every_spin.setSuffix(" s"); self.every_spin.setToolTip("Timer: seconds between photos")
-        self.target_spin = QSpinBox(); self.target_spin.setRange(5, 200); self.target_spin.setValue(40)
-        self.target_spin.setToolTip("Auto grab stops after this many photos")
+        self.every_spin.setValue(EVERY_S); self.every_spin.setSuffix(" s"); self.every_spin.setToolTip("Seconds between photos")
+        self.target_spin = QSpinBox(); self.target_spin.setRange(5, 200); self.target_spin.setValue(BATCH)
+        self.target_spin.setToolTip("How many photos to take")
+        self.folder_title = QLabel("Base folder:")
         self.auto_label = QLabel("", self.preview); self.auto_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.auto_label.hide()
         self.thumbs = QWidget()
@@ -186,12 +190,12 @@ class CaptureWindow(QMainWindow):
         self.thumbs_scroll.setWidget(self.thumbs); self.thumbs_scroll.setWidgetResizable(True)
         self.thumbs_scroll.setFixedHeight(112); self.thumbs_scroll.setFrameShape(QFrame.Shape.NoFrame)
         fold = QHBoxLayout(); fold.setSpacing(SPACING)
-        fold.addWidget(QLabel("Base folder:")); fold.addWidget(self.folder_edit, 1); fold.addWidget(self.browse_btn)
+        fold.addWidget(self.folder_title); fold.addWidget(self.folder_edit, 1); fold.addWidget(self.browse_btn)
         fold.addWidget(self.count_label)
         acts = QHBoxLayout(); acts.setSpacing(SPACING)
         acts.addWidget(self.grab_btn, 2); acts.addWidget(self.countdown_btn, 1)
-        acts.addWidget(self.auto_btn, 1); acts.addWidget(self.auto_mode); acts.addWidget(self.every_spin)
-        acts.addWidget(QLabel("Target:")); acts.addWidget(self.target_spin)
+        acts.addWidget(self.target_spin); acts.addWidget(self.auto_btn, 1)
+        acts.addWidget(self.every_label); acts.addWidget(self.every_spin)
         acts.addWidget(self.open_cal_btn); acts.addWidget(self.advanced_btn)
         central = QWidget()
         lay = QVBoxLayout(central); lay.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN); lay.setSpacing(SPACING)
@@ -213,7 +217,7 @@ class CaptureWindow(QMainWindow):
         self.grab_btn.clicked.connect(lambda: self._grab(False))
         self.countdown_btn.clicked.connect(self._start_countdown)
         self.auto_btn.clicked.connect(self._toggle_auto)
-        self.auto_mode.currentTextChanged.connect(lambda m: self.every_spin.setVisible(m == "Timer"))
+        self.target_spin.valueChanged.connect(lambda _v: self._auto_button_text())
         self.open_cal_btn.clicked.connect(self._open_calibration)
         self.advanced_btn.clicked.connect(self._advanced)
         self._tick = QTimer(self); self._tick.setInterval(1000); self._tick.timeout.connect(self._countdown_step)
@@ -246,13 +250,20 @@ class CaptureWindow(QMainWindow):
             from src.van_scan import van_from_computer
             van = van_from_computer() if use_db else ""
         self.van_edit.setText(van)
-        self.folder_edit.setText(folder or str(s.value("folder", "") or ""))
+        if self._add_to is not None:
+            self.folder_title.setText("Adding to:")
+            self.folder_edit.setText(str(self._add_to)); self.folder_edit.setReadOnly(True)
+            self.browse_btn.setEnabled(False)
+        else:
+            self.folder_edit.setText(folder or str(s.value("folder", "") or ""))
         self._want_camera = camera
         self.use_db.blockSignals(True); self.use_db.setChecked(use_db); self.use_db.blockSignals(False)
         self.user_row.hide()
-        self.every_spin.setVisible(False)              # only for Timer
         self._sync_buttons()
         self._refresh_cameras()
+        if self._add_to is not None:
+            self._say(f"Adding photos to {self._add_to.name} (the calibration app asked for more). "
+                      f"Press Take {self.target_spin.value()} photos when the board is ready.", "")
 
     # ── the camera list ──────────────────────────────────────────────────────
     def _inputs(self) -> list[str]:
@@ -495,7 +506,19 @@ class CaptureWindow(QMainWindow):
         self._worker.request_grab(str(self._session), self._quality, countdown)
 
     def _ensure_session(self) -> bool:
-        """The base folder (ask if empty) and this camera's subfolder + log (made once)."""
+        """The base folder (ask if empty) and this camera's subfolder + log (made once).
+        Adding mode: the folder the calibration app graded, for the camera it named only."""
+        if self._add_to is not None:
+            if self._want_camera and self.camera_name().lower() != self._want_camera.lower():
+                self._say(f"These photos are for {self._want_camera}: pick {self._want_camera}, "
+                          f"not {self.camera_name() or 'this input'}.", "red")
+                return False
+            if not self._add_to.is_dir():
+                self._say(f"The folder {self._add_to} is not there any more.", "red"); return False
+            if self._log is None:
+                self._session = self._add_to
+                self._start_log()
+            return True
         folder = self.folder_edit.text().strip()
         if not folder:
             self._browse()
@@ -508,37 +531,42 @@ class CaptureWindow(QMainWindow):
                 self._session = session_folder(folder, self.camera_name(), self.serial())
             except OSError as exc:
                 self._say(f"Could not make a folder in {folder}: {exc}", "red"); return False
-            self._log = CaptureLog(self._session, self.van_edit.text().strip().upper(), self.camera_name(),
-                                   self._cam.source, self._cam.port, self.serial(), self._expected(),
-                                   self._delivered, self.use_db.isChecked())
-            if self._signal is not None:
-                self._log.data["camera_signal"] = self._signal.text()
-            if self._scaling is not None:
-                self._log.data["scaling"] = self._scaling
-            if self._signal is not None or self._scaling is not None:
-                self._log.write()
+            self._start_log()
         return True
 
+    def _start_log(self) -> None:
+        self._log = CaptureLog(self._session, self.van_edit.text().strip().upper(), self.camera_name(),
+                               self._cam.source, self._cam.port, self.serial(), self._expected(),
+                               self._delivered, self.use_db.isChecked())
+        if self._signal is not None:
+            self._log.data["camera_signal"] = self._signal.text()
+        if self._scaling is not None:
+            self._log.data["scaling"] = self._scaling
+        if self._add_to is not None:
+            self._log.data["added_to_folder"] = True
+        self._log.write()
+
     # ── auto grab (one person: hold the board, Capture saves) ────────────────
+    def _auto_button_text(self) -> None:
+        if self._auto is None:
+            self.auto_btn.setText(f"Take {self.target_spin.value()} photos")
+
     def _toggle_auto(self) -> None:
         if self._auto is not None:
-            self._stop_auto("Auto grab stopped.")
+            self._stop_auto("Stopped.")
             return
         if not self._ready_to_grab() or not self._ensure_session():
             return
         from src.capture.autograb import AutoGrabThread
-        timer = self.auto_mode.currentText() == "Timer"
-        self._auto = AutoGrabThread(self._worker, self.target_spin.value(), parent=self,
-                                    every_s=self.every_spin.value() if timer else None)
+        every, n = self.every_spin.value(), self.target_spin.value()
+        self._auto = AutoGrabThread(self._worker, n, parent=self, every_s=every)
         self._auto.state.connect(self._auto_state)
         self._auto.want_save.connect(self._auto_save)
-        self._auto.board_found.connect(lambda n: self._say(f"Auto grab: board {n}. Hold it still in a new spot "
-                                                           "each time.", ""))
-        self._auto_says(f"TIMER: A PHOTO EVERY {self.every_spin.value():g} S" if timer else "LOOKING FOR THE BOARD")
+        self._auto_says(f"{n} PHOTOS, ONE EVERY {every:g} S")
         self._auto.start()
-        self.auto_btn.setText("Stop auto")
-        self._say(f"Auto grab (timer): a photo every {self.every_spin.value():g} s - move the board between photos."
-                  if timer else "Auto grab: hold the board in front of the camera.", "")
+        self.auto_btn.setText("Stop")
+        self._say(f"Taking {n} photos, one every {every:g} s: move the board to a new place and angle "
+                  "between photos, all over the picture.", "")
         self._sync_buttons()
 
     def _stop_auto(self, msg: str = "", colour: str = "") -> None:
@@ -546,7 +574,7 @@ class CaptureWindow(QMainWindow):
         if a is not None:
             a.stop()
         self.auto_label.hide()
-        self.auto_btn.setText("Auto grab")
+        self._auto_button_text()
         if msg:
             self._say(msg, colour)
         self._sync_buttons()
@@ -563,7 +591,7 @@ class CaptureWindow(QMainWindow):
             return
         from src.capture.autograb import SAY
         if what == "done":
-            self._stop_auto(f"Auto grab done: {n} photos.", "green")
+            self._stop_auto(f"Done: {n} photos. Press Open in calibration app to grade them.", "green")
             self._auto_says(f"DONE  {n} / {target}", "rgb(60,220,60)")
             QTimer.singleShot(4000, self.auto_label.hide)
             return
@@ -571,7 +599,7 @@ class CaptureWindow(QMainWindow):
             self._auto_says(f"SAVED  {n} / {target}", "rgb(60,220,60)")
         else:
             self._auto_says(f"{SAY.get(what, what.upper())}   {n} / {target}",
-                            "rgb(255,107,107)" if what == "no board" else "rgb(230,180,40)")
+                            "rgb(230,180,40)")
 
     def _auto_save(self, frame, _sig) -> None:
         if self._auto is None or self._worker is None or self._busy_saving or not self._ensure_session():
@@ -641,7 +669,8 @@ class CaptureWindow(QMainWindow):
 
     def _folder_changed(self) -> None:
         self._log, self._session = None, None                  # a new base folder: new session folder
-        QSettings(ORG, APP).setValue("folder", self.folder_edit.text().strip())
+        if self._add_to is None:                                # adding mode never changes the saved base folder
+            QSettings(ORG, APP).setValue("folder", self.folder_edit.text().strip())
         self._sync_buttons()
 
     def _camera_args(self) -> list[str]:
@@ -677,7 +706,7 @@ class CaptureWindow(QMainWindow):
         auto = self._auto is not None
         self.grab_btn.setEnabled(ready and not auto); self.countdown_btn.setEnabled(ready and not auto)
         self.auto_btn.setEnabled(auto or (ready and self._worker is not None))
-        self.target_spin.setEnabled(not auto); self.auto_mode.setEnabled(not auto); self.every_spin.setEnabled(not auto)
+        self.target_spin.setEnabled(not auto); self.every_spin.setEnabled(not auto)
         self.try_btn.setEnabled(self._cam is not None and self._cam.supported)
         self.open_cal_btn.setEnabled(bool(self.folder_edit.text().strip()))
 

@@ -9,8 +9,9 @@ from one van camera and saves full-size calibration photos plus a capture log in
 folder. The SurveyorCalibration app then grades/calibrates that folder.
 State (2026-11-14): Phases 0-4 built and installed on ARAN99; Phase 5 (field test) bench
 part done (`field_test_v1.md`); Phase 9 GOX (BitFlow CoaXPress) built and checked on the
-real camera; Auto grab (Smart + Timer) added. Not built: Phases 6 (live guidance),
-7 (Magewell SDK), 8 (Old School collection).
+real camera; Auto grab added, then (same day) replaced by Take 50 photos + the calibration
+app's Take 50 more; Magewell signal check (Phase 7, started). Not built: Phases 6 (live
+guidance), 8 (Old School collection).
 
 ## How to read this project
 - Calibration app (existing, working): `main.py`, `cli.py`, `src/` (detector,

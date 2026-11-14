@@ -25,6 +25,11 @@ inflated by blur and 4K.  Fleet with these rules: 30 of 68 pass (0 before).
 
 The engine works on a finished CalibrationResult, so the same code grades a
 folder now and, later, a live stream of frames (see coverage_counts()).
+
+Photos come in batches of PHOTO_BATCH (Derek, 2026-11-14): no board finding while
+collecting.  A NOT PASSED that more photos can fix (anything but a hard stop) asks for
+another batch and says what is missing (GradeReport.missing); the report's "Take 50 more"
+button opens SurveyorCapture on the same folder.  Unusable photos go to NotUsed as before.
 """
 
 from __future__ import annotations
@@ -44,6 +49,7 @@ REPEAT_SPLITS = 6
 REPEAT_SEED = 0                  # fixed: the same photos always give the same answer
 MIN_IMAGES = 15
 MIN_IMAGES_PER_HALF = 6
+PHOTO_BATCH = 50                 # photos per batch from SurveyorCapture (keep = src/capture/autograb.BATCH)
 PLACEHOLDER_CENTRE_TOL_PX = 1.0
 BLUR_SOFT_HD = 1.6              # dot edge blur, px at 1920 wide: above = soft (warning)
 BLUR_FAIL_HD = 2.2              # above = too blurry (fail); a 4K camera gets 2x these
@@ -88,6 +94,7 @@ class GradeReport:
     blurry_images: list = field(default_factory=list)   # (path, blur_px), worst first
     area_photos: dict = field(default_factory=dict)     # 3x3 area name -> photos to take there
     area_how: dict = field(default_factory=dict)        # 3x3 area name -> short "how" text
+    missing: list = field(default_factory=list)         # short plain words: what more photos must add
 
     def _ask(self, cell, n: int, how: str) -> None:
         self.area_photos[cell.name] = self.area_photos.get(cell.name, 0) + n
@@ -119,18 +126,20 @@ class GradeReport:
                                                  "board over the whole picture all through the shoot, hold it still.")
 
     @property
+    def wants_more(self) -> bool:
+        """Not passed, and another batch of photos can fix it (anything but a hard stop)."""
+        return not self.passed and not self.hard_stops
+
+    @property
     def action(self) -> str:
-        """The one line the crew needs: done, get more photos, or retake."""
+        """The one line the crew needs: done, take another batch (and what is missing), or retake."""
         if self.passed:
             return "PASS — you're done. Click Save."
         if self.hard_stops:
             return "NOT PASSED — this set must not be used. Retake the photos."
-        if self.more_photos == 0 and self.steady[0] == "poor":
-            return "NOT PASSED — the lens isn't steady yet (box below the squares). Retake the photos."
-        if self.more_photos:
-            return (f"NOT PASSED — get about {self.more_photos} more photo{'s' if self.more_photos > 1 else ''} "
-                    f"where the squares below ask for them.")
-        return "NOT PASSED — retake the photos (see the details below)."
+        if self.missing:
+            return f"NOT PASSED — take another {PHOTO_BATCH} photos. Missing: {'; '.join(self.missing)}."
+        return f"NOT PASSED — take another {PHOTO_BATCH} photos (the squares below show where)."
 
     def as_text(self) -> str:
         lines = [self.headline]
@@ -276,6 +285,27 @@ def _grade_blur(rep, cal_result) -> None:
                             f"listed): hold the board still.")
 
 
+def _missing(rep) -> list[str]:
+    """Short plain words: what the next batch of photos must add."""
+    out = []
+    if rep.grid is not None:
+        board = [c.name for c in rep.grid.flat if c.points_status != GOOD]
+        tilt = [c.name for c in rep.grid.flat if c.points and c.tilt_status != GOOD]
+        many = lambda names: (f"{len(names)} of 9 areas (the red squares)" if len(names) > 3 else ", ".join(names))
+        if board:
+            out.append("the board in " + many(board))
+        if tilt:
+            out.append("the board tilted 20-45° in " + many(tilt))
+    if rep.images_used < MIN_IMAGES:
+        out.append(f"more usable photos ({rep.images_used} of at least {MIN_IMAGES})")
+    r = rep.repeatability
+    if r is not None and r.est_error_p95_mrad > REPEAT_MAX_MRAD:
+        out.append("a steadier lens: the board spread over the whole picture, held still")
+    if any(x.startswith("Too blurry") for x in rep.reasons):
+        out.append("sharper photos: hold the board still")
+    return out
+
+
 # ── The grade ────────────────────────────────────────────────────────────────
 
 def grade(cal_result) -> GradeReport:
@@ -357,14 +387,12 @@ def grade(cal_result) -> GradeReport:
                                 f"poorly (listed): hold the board still and take replacements.")
 
     rep.more_photos = more
+    rep.missing = _missing(rep)
     rep.passed = not rep.hard_stops and not rep.reasons
     if rep.passed:
         rep.headline = "PASS: good enough to use."
     elif rep.hard_stops:
         rep.headline = "NOT PASSED: this calibration must not be used."
-    elif more:
-        rep.headline = (f"NOT PASSED: take about {more} more photo{'s' if more > 1 else ''} "
-                        f"in the areas listed.")
     else:
-        rep.headline = "NOT PASSED: retake the photos, see the reasons."
+        rep.headline = f"NOT PASSED: take another {PHOTO_BATCH} photos."
     return rep

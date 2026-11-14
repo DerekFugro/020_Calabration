@@ -64,11 +64,13 @@ it). With it off, pick the camera from the usual list and type the serial.
   `%LOCALAPPDATA%\SurveyorCalibration\bitflow_board<N>_trigger.json`). It refuses to open
   the BitFlow card while ARAN's **FR Video Service** is running. Nothing else on any
   camera or card is changed.
-- **Grab** (button or Space), **Countdown**, or **Auto grab**:
-  - *Smart*: saves when the whole board is found, held still, and in a new place, size,
-    tilt or turn; big text on the picture says what it needs; stops at the **Target**.
-  - *Timer*: saves a photo every N seconds (default 2) whatever is in it; sort them out
-    in the calibration app afterwards.
+- **Grab** (button or Space), **Countdown**, or **Take 50 photos**: one photo every 2 s
+  whatever is in it (no board finding while collecting), stops at 50; move the board
+  between photos. The calibration app sorts them out: unusable photos go to `NotUsed`, and
+  a NOT PASSED that more photos can fix says what is missing and offers **Take 50 more**,
+  which opens Capture on the same camera and folder (`--add-to`).
+- **Magewell inputs:** read once a second; Capture shows what the camera itself sends
+  (size, frame rate) and warns, asks and logs when the ACS size makes the card scale.
 - **Folders:** the folder you pick is the *base*; each camera session gets its own
   subfolder `<Camera>_<Serial>_<YYYYMMDD_HHMMSS>` with the photos
   (`<Camera>_<date>_<time>_<ms>.jpg`, full size, never overwritten) and the log

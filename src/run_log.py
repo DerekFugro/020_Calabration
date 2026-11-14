@@ -76,7 +76,8 @@ def write_run_log(run, run_id: str, started: datetime, inputs: dict | None, erro
                 "warnings": list(g.warnings), "hard_stops": list(g.hard_stops),
                 "lens_steady_at_10m_mm": round(float(rep.at_10m_mm), 2) if rep is not None else None,
                 "dot_edge_blur_px": _num(round(float(getattr(g, "blur_median_px", float("nan"))), 2)),
-                "more_photos_needed": int(getattr(g, "more_photos", 0) or 0)},
+                "more_photos_needed": int(getattr(g, "more_photos", 0) or 0),
+                "missing": list(getattr(g, "missing", []) or [])},
             "vs_fleet_lens_file_10m_mm": _num(run.vs_filed_10m_mm),
         }
     doc = {
