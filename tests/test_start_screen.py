@@ -39,7 +39,7 @@ def test_start_screen_choices(app):
     from src.widgets.start_screen import StartScreen
     s = StartScreen()
     assert s.buttons["intrinsic"].isEnabled() and s.buttons["extrinsic"].isEnabled()
-    assert not s.buttons["capture"].isEnabled() and not s.buttons["capture_os"].isEnabled()
+    assert s.buttons["capture"].isEnabled() and not s.buttons["capture_os"].isEnabled()
     got = []
     s.chosen.connect(got.append)
     s.buttons["extrinsic"].click(); s.boards_btn.click()
@@ -104,3 +104,23 @@ def test_database_off_means_typed_serial(app):
     assert b._db_worker is None and b.db_res is None and b.role_combo.isEditable()
     b.role_combo.setEditText("ROW")
     assert not b.serial_input.isReadOnly() and b.serial_edit.isHidden()
+
+
+def test_collect_lens_photos_starts_capture_as_its_own_program(app, monkeypatch):
+    """Phase 4: a separate process (QProcess.startDetached), never an import of src.capture."""
+    import sys
+    from src.widgets import launcher as L
+    prog, args, cwd = L.capture_command("ARAN99", True)
+    assert prog == sys.executable and args == ["-m", "src.capture", "--van", "ARAN99"]
+    assert L.capture_command("", False)[1] == ["-m", "src.capture", "--no-db"]
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", r"C:\\Program Files\\SurveyorCalibration\\SurveyorCalibration.exe")
+    prog, args, _ = L.capture_command("ARAN69", False)
+    assert prog.endswith("SurveyorCapture.exe") and args == ["--van", "ARAN69", "--no-db"]
+    monkeypatch.undo()
+    started = []
+    monkeypatch.setattr(L.QProcess, "startDetached", staticmethod(lambda p, a, c: started.append((p, a)) or True))
+    lch = L.Launcher()
+    assert lch.start.buttons["capture"].isEnabled()
+    lch.start.buttons["capture"].click()
+    assert started and started[0][1][:2] == ["-m", "src.capture"] and lch.main is None

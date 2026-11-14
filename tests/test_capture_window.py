@@ -115,3 +115,10 @@ def test_closing_releases_the_camera_for_good(app, tmp_path):
     w.van_edit.editingFinished.emit()           # what focus leaving the box does
     wait(app, lambda: False, 0.5)
     assert w._worker is None
+
+
+def test_settings_never_reach_the_registry():
+    """Guard: the fixture is live, so a save in a test lands in the temp .ini file."""
+    from src.capture import window
+    s = window.QSettings(window.ORG, window.APP)
+    assert s.format() == __import__('PySide6.QtCore', fromlist=['QSettings']).QSettings.Format.IniFormat and "qsettings" in s.fileName()

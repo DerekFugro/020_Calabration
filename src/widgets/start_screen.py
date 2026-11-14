@@ -4,8 +4,7 @@
   "Use the van database" tick box: ticked when found, never unticked by the app.
   Untick it to work on photos from another van (e.g. ARAN54 photos on the ARAN99 bench).
 
-  Choices: Collect lens photos (SurveyorCapture, a separate program; greyed until it
-  exists), Calibrate lens, Collect Old School photos (later), Camera position, Boards.
+  Choices: Collect lens photos (SurveyorCapture, a separate program), Calibrate lens, Collect Old School photos (later), Camera position, Boards.
   No van, camera or serial here: those are set in the window that opens.
 """
 
@@ -19,7 +18,7 @@ from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QPushButton, QVBox
 from src.styles import STYLESHEET_MAIN
 
 CHOICES = [  # key, label, explanation, available now
-    ("capture", "Collect lens photos", "Live picture from a van camera; grab the board photos.", False),
+    ("capture", "Collect lens photos", "Live picture from a van camera; grab the board photos.", True),
     ("intrinsic", "Calibrate lens", "Grade a camera's board photos and make its lens file.", True),
     ("capture_os", "Collect Old School photos", "Coming later.", False),
     ("extrinsic", "Camera position", "Old School photos -> the camera's angles, height and lever arms.", True),

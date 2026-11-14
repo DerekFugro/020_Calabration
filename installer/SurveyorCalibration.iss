@@ -51,6 +51,7 @@ Source: "{#Dist}\_internal\control\*"; DestDir: "{commonappdata}\SurveyorCalibra
 
 [Icons]
 Name: "{autoprograms}\SurveyorCalibration"; Filename: "{app}\SurveyorCalibration.exe"
+Name: "{autoprograms}\SurveyorCapture"; Filename: "{app}\SurveyorCapture.exe"
 Name: "{autodesktop}\SurveyorCalibration"; Filename: "{app}\SurveyorCalibration.exe"; Tasks: desktopicon
 
 [Run]
