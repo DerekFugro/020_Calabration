@@ -31,11 +31,9 @@ Version 1 (Phases 1–5) has exactly these features:
    and size. Sources, in this order:
    a. the van's ARAN SQL database (read only, through the existing `src/camera_db.py`),
       when "Use the van database" is ticked (see Start screen below);
-   b. if the database can't be reached or has no cameras: an ARAN Settings XML file
-      the user picks (e.g. `ARAN66_Settings_20260330.xml` from an end-of-day folder),
-      read only;
-   c. if neither: every video input Windows reports, by port name; the user types
-      which camera it is.
+   b. if the database is off, can't be reached or has no cameras: every video input
+      Windows reports, by port name; the user picks which camera it is and types
+      the serial. (No ARAN Settings XML: Derek, 2026-11-13 — the database only.)
    The log records which source named the camera.
 2. **Live preview** of the chosen camera.
 3. **Grab** a full-size photo three ways: a big Grab button, the Space bar, and a
@@ -51,8 +49,8 @@ Version 1 (Phases 1–5) has exactly these features:
    collection or the other program using it, then press Try again." Never retry in
    a loop and never try to take the camera from another program.
 7. **Any camera size.** Never assume 4K. The size to grab is, in order: the size in
-   the database/Settings XML (`CCDWidth` × `CCDHeight`); otherwise the largest size
-   the input reports. After opening, check the frame size actually delivered; if
+   the database (`CCDWidth` × `CCDHeight`); otherwise asked of the crew (the card
+   gives 640×480 if no size is asked — bench_results.md). After opening, check the frame size actually delivered; if
    it differs from the expected size, show a warning (don't refuse) and log both.
 
 ## ⭐ Success criteria:
@@ -85,7 +83,7 @@ grab key) live behind an "Advanced…" button.
 
 ## ⭐ Top user stories:
 1. *Pick a camera.* As a crew member I pick "ROW" from a list and see its live
-   picture. Accept: list shows names from the database (or Settings XML, or ports);
+   picture. Accept: list shows names from the database (or Windows ports);
    preview appears within 5 s; size and serial shown under the picture.
 2. *Grab.* I press Grab (or Space, or Countdown) and a photo is saved. Accept: file
    appears in the chosen folder at full native size, count goes up by one, a
@@ -118,8 +116,7 @@ ships in the same installer as the SurveyorCalibration app.
 ## ⭐ Key screens / endpoints / commands:
 One main window, `CaptureWindow` (`src/capture/window.py`):
 - Top bar: Van (filled from the PC name, editable), Camera list, camera source
-  label ("from the van database" / "from Settings XML …" / "from Windows ports"),
-  "Load Settings XML…", "Try again".
+  label ("from the van database" / "from Windows ports"), "Try again".
 - Centre: live preview, scaled to fit, never stretched (keep aspect ratio). Under it:
   camera, port, serial, expected size, delivered size, frames/s.
 - Bottom: save-folder picker, photo count, big **Grab** button, **Countdown**
@@ -180,7 +177,7 @@ None. Anyone signed in to the van PC can use it. No admin rights needed to run.
   the photos, never overwritten; rewritten atomically (write temp + rename) after
   each grab. Fields:
   `app_version` (reuse `src/version.app_version()`), `computer`, `van`,
-  `camera`, `camera_source` (`database` / `settings_xml:<file>` / `user`),
+  `camera`, `camera_source` (`database` / `user`),
   `port` (DirectShow name, e.g. `Video (01-1 Pro Capture Dual SDI 4K+)`),
   `serial` (TEXT — keep leading zeros, e.g. `0103043`), `expected_size`,
   `delivered_size`, `started`, and `photos`: list of
@@ -193,16 +190,14 @@ None. Anyone signed in to the van PC can use it. No admin rights needed to run.
 ## ⭐ Security & data handling:
 - Threat model: protect the van's ARAN system (database, settings, collection) from
   being changed or disrupted. Trust boundaries:
-  the database rows, the Settings XML file, DirectShow device names, folder paths
+  the database rows, DirectShow device names, folder paths
   typed or picked by the user.
 - Database: read only, Windows sign-in only (no SQL login, no password), reuse
   `src/camera_db.py` unchanged (it already uses parameterless fixed SELECTs and
   ReadOnly intent). No new SQL.
-- Settings XML: parse with `xml.etree.ElementTree` (no network, no DTD/entity
-  expansion — reject the file if it contains `<!DOCTYPE`), cap file size at 10 MB,
-  read only `VideoDeviceConfig-*` blocks (`CaptureView`, `CaptureDeviceName`,
-  `CameraSerialNumber`, `CCDWidth`, `CCDHeight`), treat all values as text, strip
-  and length-limit them (≤ 100 chars).
+- No-signal frames: the Magewell card sends full-size "No Signal" colour bars when
+  nothing is on the input (bench_results.md). Capture checks every grab for them and
+  refuses to save one, in plain words.
 - File names: build from a camera name cleaned to `[A-Za-z0-9_-]`; never from raw
   input. Write only inside the chosen folder.
 - No network access other than the SQL Server connection camera_db already makes.
@@ -286,8 +281,8 @@ class FrameSource(Protocol):
 Implementations: `DShowSource` (OpenCV + DirectShow) and `FakeSource` (makes frames
 of any size, can simulate busy / no signal / wrong size). All logic tests use
 `FakeSource`. Hardware tests are marked `@pytest.mark.hardware` and skipped unless
-`CAPTURE_HW=1`. Required tests: camera-list sources (database rows, Settings XML
-sample, ports-only), name→index matching, size fallback and mismatch warning,
+`CAPTURE_HW=1`. Required tests: camera-list sources (database rows, ports-only),
+no-signal colour bars refused, name→index matching, size fallback and mismatch warning,
 never-overwrite names, log contents and append, busy handling, the import-boundary
 rule, 1920×1080 and 3840×2160 and an odd size (e.g. 2448×2048). The existing 216
 tests must still pass.
@@ -301,8 +296,8 @@ Preview may be downscaled for display, but saved photos are always the full fram
 
 ## ⭐ Reference material:
 See `docs/capture/CONTEXT.md`. Authoritative: Magewell MWCaptureSDK 3.3.1.1596
-Developer's Guide (SDK v3). Samples: ARAN66 Settings XML and Video log (EOD
-20260330), ARAN69 camera table. Later phases: BitFlow and JAI manuals.
+Developer's Guide (SDK v3). Samples: ARAN66 Video log (EOD 20260330), ARAN69
+camera table, ARAN99 bench results (docs/capture/bench_results.md). Later phases: BitFlow and JAI manuals.
 
 ---
 
@@ -354,7 +349,7 @@ the names below are still current before relying on them.*
 - **Escalate on doubt.** If a lesser tier produces anything questionable, or a
   task is harder than it looked, hand it to the strongest tier.
 - GUI layout generation and any security-sensitive change (database access,
-  Settings XML parsing, file writing, hardware access) get a human review step
+  file writing, hardware access) get a human review step
   before proceeding.
 
 ## First tasks when coding begins

@@ -21,8 +21,13 @@ from pathlib import Path
 SETTINGS_DIR = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "SurveyorCalibration"
 TIMEOUT_S = 4
 
+# Every save of ARAN's camera setup writes a NEW VideoSystemConfiguration holding the whole
+# camera set; the old ones stay (ARAN99: 29 of them, all Installed/Enabled).  So only the
+# NEWEST configuration is the van's current cameras (Derek, 2026-11-14; ARAN99 check: adding
+# a Right camera wrote configs 1068/1069 with all three cameras).  Chosen in lookup(), below.
 QUERY = """
-SELECT v.Name, d.VideoModuleName, d.CaptureView, d.CameraSerialNumber, d.CCDWidth, d.CCDHeight, d.Enabled
+SELECT v.Name, d.VideoModuleName, d.CaptureView, d.CameraSerialNumber, d.CCDWidth, d.CCDHeight, d.Enabled,
+       d.CaptureDeviceName, d.IDVideoSystemConfiguration, s.TimeChanged
 FROM VideoDeviceConfig d
 LEFT JOIN VideoSystemConfiguration s ON s.IDVideoSystemConfiguration = d.IDVideoSystemConfiguration
 LEFT JOIN CollectionVehicles v ON v.IdCollectionVehicle = s.IDVehicle
@@ -35,6 +40,26 @@ class CameraRow:
     serial: str
     width: int
     height: int
+    port: str = ""          # CaptureDeviceName: the capture input, e.g. "Video (00-1 Pro Capture Dual HDMI 4K+)"
+    pc: str = ""            # VideoModuleName: which van PC holds the camera, e.g. "Aran99-Server"
+
+
+def newest_configuration(rows, van: str) -> list:
+    """Only the rows of the newest camera configuration (TimeChanged, then id), this van's if the
+    database names vans (an exported database can hold several)."""
+    def is_van(r):
+        name = (getattr(r, "Name", "") or "").upper().replace(" ", "")
+        mod = (getattr(r, "VideoModuleName", "") or "").upper().replace(" ", "")
+        return bool(van) and (name == van or mod.startswith(van))
+    mine = [r for r in rows if is_van(r)] or list(rows)
+    def key(r):
+        t = getattr(r, "TimeChanged", None)
+        return (t is not None, t or 0, getattr(r, "IDVideoSystemConfiguration", 0) or 0)
+    if not mine:
+        return []
+    best = max(mine, key=key)
+    cfg = getattr(best, "IDVideoSystemConfiguration", None)
+    return [r for r in mine if getattr(r, "IDVideoSystemConfiguration", None) == cfg]
 
 
 @dataclass
@@ -148,15 +173,12 @@ def lookup(van: str) -> DbResult:
         finally:
             con.close()
         res = DbResult(server=server, database=database)
-        # Only enabled cameras (Derek, 2026-11-10).  An exported database can hold rows for
-        # several vans: this van's rows win.
-        def rank(r):
-            mod = (r.VideoModuleName or "").upper().replace(" ", "")
-            return mod.startswith(van) if van else True
-        for r in sorted(rows, key=rank):
+        # The newest configuration only (see QUERY), enabled cameras only (Derek, 2026-11-10).
+        for r in newest_configuration(rows, van):
             if r.Enabled and r.CaptureView and r.CameraSerialNumber:
                 res.cameras[r.CaptureView.replace(" ", "").upper()] = CameraRow(
-                    r.CaptureView, str(r.CameraSerialNumber).strip(), int(r.CCDWidth or 0), int(r.CCDHeight or 0))
+                    r.CaptureView, str(r.CameraSerialNumber).strip(), int(r.CCDWidth or 0), int(r.CCDHeight or 0),
+                    str(getattr(r, "CaptureDeviceName", "") or "").strip(), str(r.VideoModuleName or "").strip())
         if not res.cameras:
             res.error = f"{res.where} has no enabled cameras in VideoDeviceConfig."
         return res

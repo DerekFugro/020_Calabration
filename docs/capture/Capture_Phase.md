@@ -104,7 +104,7 @@ Magewell PC before any GUI is written.
    width, height, source, pc`) and the three list sources:
    `from_database(van)` (via `src/camera_db.lookup_cached`; add a read-only
    `port` field to `CameraRow` and its SELECT if missing — only allowed change to
-   camera_db), `from_settings_xml(path)` (safe parse rules in the Instructions),
+   camera_db), (no Settings XML — Derek, 2026-11-13),
    `from_ports()` (names from `dshow_names.video_inputs()`, user names them later).
    `resolve_index(port) -> int | None` matches by name.
 3. `src/capture/sizes.py`: expected size = database/XML size, else largest
@@ -116,11 +116,10 @@ Magewell PC before any GUI is written.
    each grab, fields as in the Instructions; serials kept as text.
 6. `src/capture/errors.py`: append to `%LOCALAPPDATA%\SurveyorCalibration\capture_errors.log`,
    rotate at 5 MB, never log passwords.
-7. Tests (all with `FakeSource`): list sources incl. the ARAN66 sample XML
-   (copy only its four `VideoDeviceConfig-*` blocks into
-   `tests/data/aran66_settings_cameras.xml`), name→index, sizes 1920×1080,
-   3840×2160 and 2448×2048, mismatch warning, never-overwrite, log append,
-   busy/no-signal handling, XML with `<!DOCTYPE` rejected, serial `0103043` kept.
+7. Tests (all with `FakeSource`): database and ports-only list sources, name→index,
+   sizes 1920×1080, 3840×2160 and 2448×2048, mismatch warning, never-overwrite, log
+   append, busy handling, **no-signal colour bars refused** (bench_results.md), serial
+   `0103043` kept as text.
 8. `tests/test_capture_boundary.py`: scan imports — `src/capture` imports only the
    allowed `src.*` modules; nothing outside `src/capture` imports `src.capture`.
 
@@ -215,7 +214,7 @@ Magewell PC before any GUI is written.
    app; lens must grade PASS at the camera's native size.
 3. Repeat with a 1920×1080 camera (e.g. RearLeft) — 10+ photos at 1920×1080.
 4. With ARAN collection running: Capture shows the busy message, stays responsive.
-5. Database unreachable test: load an ARAN Settings XML; then ports-only mode.
+5. Database unreachable / unticked test: ports-only mode, serial typed.
 6. Record results in `docs/capture/field_test_v1.md`.
 
 ### Done when:

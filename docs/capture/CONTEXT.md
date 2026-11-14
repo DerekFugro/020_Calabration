@@ -81,21 +81,16 @@ line 522.
 - **Whether two programs can open one Magewell input at once** is not stated in
   the guide (it says one channel can output multiple streams). Phase 1 bench test
   answers it on ARAN99; until then assume "first connect wins".
-- **Where the ARAN Settings XML lives on a live van PC** is unknown (the sample is
-  from an end-of-day export). The user picks the file.
 - **No BitFlow/JAI `.toc.md` files** yet (Phase 9 only).
 - The online manuals-library manifest returned 403 on 2026-11-07/08; the local
   `D:\Manuals` copy was used instead.
 
 ## Sample / test data (inputs — NOT deliverables)
-- `F:\Camera Calibrations\WithLoops\2026\WV26\20260331_ARAN66_WV26_Surveyor\Extrinsic\Loop\EOD\20260330\ARAN66_Settings_20260330.xml`
-  → ARAN Settings export. Has `VideoDeviceConfig-<View>` blocks with
-  `CaptureView`, `CaptureDeviceName`, `CameraSerialNumber`, `CCDWidth`. ARAN66:
-  ForwardLeft `Video (00-0 …)` 2003075 3840; ForwardRight `Video (00-1 …)` 2003074
-  3840; RearLeft `Video (01-0 …)` 0103043 1920; ROW `Video (01-1 …)` 2003073 3840.
-  Copy only those blocks into `tests/data/aran66_settings_cameras.xml`; the full
-  file is not committed.
-- Same folder, `Logs\ARAN66-SERVER\ARAN66-SERVER-Video.log` → ARAN's capture log;
+- ARAN66 cameras (from its Settings export, kept for reference only — Capture does not
+  read Settings XML, Derek 2026-11-13): ForwardLeft `Video (00-0 …)` 2003075 3840;
+  ForwardRight `Video (00-1 …)` 2003074 3840; RearLeft `Video (01-0 …)` 0103043 1920;
+  ROW `Video (01-1 …)` 2003073 3840.
+- `F:\Camera Calibrations\WithLoops\2026\WV26\20260331_ARAN66_WV26_Surveyor\Extrinsic\Loop\EOD\20260330\Logs\ARAN66-SERVER\ARAN66-SERVER-Video.log` → ARAN's capture log;
   shows ARAN opening the four Magewell inputs by DirectShow name (IDs 0–3) and
   holding them while collecting.
 - Same folder, `Mid-Day\<Camera>\*.jpg`, `Morning\<Camera>\*.jpg` → ARAN's own
