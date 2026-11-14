@@ -119,6 +119,7 @@ def test_collect_lens_photos_starts_capture_as_its_own_program(app, monkeypatch)
     assert prog.endswith("SurveyorCapture.exe") and args == ["--van", "ARAN69", "--no-db"]
     monkeypatch.undo()
     started = []
+    monkeypatch.setattr(L, "capture_present", lambda *a: True)   # this test is about the command, not the files
     monkeypatch.setattr(L.QProcess, "startDetached", staticmethod(lambda p, a, c: started.append((p, a)) or True))
     lch = L.Launcher()
     assert lch.start.buttons["capture"].isEnabled()
