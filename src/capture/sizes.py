@@ -25,3 +25,29 @@ def size_warning(expected: tuple[int, int] | None, delivered: tuple[int, int], c
         return (f"{who} should give {ew} x {eh} photos but gives {dw} x {dh}. "
                 "The lens calibration needs the camera's full size.")
     return None
+
+
+def scaling(expected: tuple[int, int] | None, signal) -> str | None:
+    """'upscaling' / 'downscaling' / 'rescaling' when the card must change the camera's picture to
+    give the expected (ACS / database) size; None when they match or the camera's size isn't known."""
+    if expected is None or signal is None or not getattr(signal, "locked", False):
+        return None
+    ew, eh = expected
+    if (ew, eh) == (signal.width, signal.height):
+        return None
+    if ew >= signal.width and eh >= signal.height:
+        return "upscaling"
+    if ew <= signal.width and eh <= signal.height:
+        return "downscaling"
+    return "rescaling"
+
+
+def scaling_question(expected: tuple[int, int], signal, camera: str = "", database: bool = True) -> str:
+    """Plain words for the crew: the camera's own size is not the size Capture asks the card for."""
+    who = camera or "This camera"
+    kind = scaling(expected, signal) or "rescaling"
+    where = "ACS (the van database) is set to" if database else "the size picked is"
+    return (f"{who}: the camera sends {signal.text()}, but {where} {expected[0]} x {expected[1]}. "
+            f"The card is {kind} the picture.\n\nDid you know this camera is set up for {kind}?\n\n"
+            f"Either way, the photos are taken at {expected[0]} x {expected[1]}"
+            + (", the same as ACS records." if database else ", the size picked."))

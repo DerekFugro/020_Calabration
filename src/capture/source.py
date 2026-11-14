@@ -3,6 +3,9 @@
 Read only: open, read frames, close.  Never changes camera or card settings, never retries
 in a loop, never tries to take an input from another program (first connect wins).
 Always ask for the expected size: with no size asked the card gives 640x480 (bench test).
+Broadcast cameras run at 30 - 60 frames/s; photos need about one a second, so a DirectShow
+source is read once a second (READ_EVERY_S) - checked on ARAN59 ROW: after a 1 s pause the read
+gives the newest frame (at most one frame old), not a queue of old ones.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ class OpenResult:
     message: str = ""         # plain English, for the crew
     width: int = 0            # delivered size of the first frame
     height: int = 0
+    signal: object = None     # magewell.CameraSignal: what the camera itself sends (None = not known)
 
 
 def busy_message(camera: str) -> str:
@@ -35,16 +39,26 @@ class FrameSource(Protocol):
     def close(self) -> None: ...
 
 
-class DShowSource:
-    """One DirectShow input, by its cv2.CAP_DSHOW index (found from its name: cameras.resolve_index)."""
+READ_EVERY_S = 1.0
 
-    def __init__(self, index: int, camera: str = "", first_frame_s: float = 3.0) -> None:
-        self.index, self.camera, self.first_frame_s = index, camera, first_frame_s
+
+class DShowSource:
+    """One DirectShow input, by its cv2.CAP_DSHOW index (found from its name: cameras.resolve_index).
+    port = the input's name; a Magewell input's camera signal is read from it (read only)."""
+
+    read_every_s = READ_EVERY_S
+
+    def __init__(self, index: int, camera: str = "", first_frame_s: float = 3.0, port: str = "") -> None:
+        self.index, self.camera, self.first_frame_s, self.port = index, camera, first_frame_s, port
         self._cap = None
 
     def open(self, width: int = 0, height: int = 0) -> OpenResult:
         import cv2
         self.close()
+        signal = None
+        if self.port:
+            from src.capture.magewell import camera_signal
+            signal = camera_signal(self.port)
         cap = cv2.VideoCapture(self.index, cv2.CAP_DSHOW)
         if not cap.isOpened():
             cap.release()
@@ -60,7 +74,7 @@ class DShowSource:
             cap.release()
             return OpenResult(False, busy_message(self.camera))
         self._cap = cap
-        return OpenResult(True, "", frame.shape[1], frame.shape[0])
+        return OpenResult(True, "", frame.shape[1], frame.shape[0], signal)
 
     def read(self) -> np.ndarray | None:
         if self._cap is None:
@@ -79,9 +93,11 @@ class FakeSource:
     card's no-signal bars, or deliver a different size than asked."""
 
     def __init__(self, width: int = 1920, height: int = 1080, busy: bool = False, no_signal: bool = False,
-                 deliver: tuple[int, int] | None = None, camera: str = "") -> None:
+                 deliver: tuple[int, int] | None = None, camera: str = "", signal=None,
+                 read_every_s: float = 0.0) -> None:
         self.width, self.height, self.busy, self.no_signal = width, height, busy, no_signal
         self.deliver, self.camera, self._open, self._n = deliver, camera, False, 0
+        self.signal, self.read_every_s, self.reads = signal, read_every_s, 0
 
     def open(self, width: int = 0, height: int = 0) -> OpenResult:
         if self.busy:
@@ -91,11 +107,12 @@ class FakeSource:
         if self.deliver:
             self.width, self.height = self.deliver
         self._open = True
-        return OpenResult(True, "", self.width, self.height)
+        return OpenResult(True, "", self.width, self.height, self.signal)
 
     def read(self) -> np.ndarray | None:
         if not self._open:
             return None
+        self.reads += 1
         if self.no_signal:
             return colour_bars(self.width, self.height)
         self._n += 1

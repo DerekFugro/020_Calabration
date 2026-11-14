@@ -4,8 +4,8 @@ Read `README.md` for what the apps do. Capture work: read `docs/capture/CONTEXT.
 
 ## The people and the code
 - Owner: Derek (Fugro ARAN hardware/field specialist). Repo `DerekFugro/020_Calabration`,
-  branch `main`. Local copy on the bench PC: `E:\SurveyorCalibration\020_Calabration`
-  (Aran99-Server, Windows user `dvs`).
+  branch `main`. Local copy on the bench PC: `E:\DP\SurveyorCalibration`
+  (ARAN59-Server, Windows user `dvs`).
 - Pushes go through Derek's personal GitHub `dapfromcanada` (a collaborator), signed in
   on the PC (`C:\Users\dvs\.gitconfig`). Leave other people's saved credentials alone.
 - Python 3.12 + uv + `requirements.txt` (no pyproject). PySide6 GUI, OpenCV 5, pyodbc,

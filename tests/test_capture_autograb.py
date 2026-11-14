@@ -156,14 +156,13 @@ def test_window_timer_saves_every_few_seconds_without_a_board(app, tmp_path, mon
     w.size_combo.setCurrentText("1920 x 1080")
     assert wait(app, lambda: w.auto_btn.isEnabled())
     assert w.every_spin.isHidden()
-    w.auto_mode.setCurrentText("Timer"); assert not w.every_spin.isHidden() and w.every_spin.value() == 2.0
-    w.every_spin.setValue(0.5)
+    w.auto_mode.setCurrentText("Timer"); assert not w.every_spin.isHidden() and w.every_spin.value() == 1.0
     monkeypatch.setattr(w.target_spin, "value", lambda: 4)
     t0 = time.time()
     w._toggle_auto()
     assert "TIMER" in w.auto_label.text()
     assert wait(app, lambda: w._auto is None, 15)
-    assert len(list(tmp_path.glob("ROW_88888888_*/ROW_*.jpg"))) == 4 and time.time() - t0 >= 1.4   # ~0.5 s apart
+    assert len(list(tmp_path.glob("ROW_88888888_*/ROW_*.jpg"))) == 4 and time.time() - t0 >= 2.8   # ~1 s apart (the default)
     assert "done" in w.status.text().lower()
     w.close()
 

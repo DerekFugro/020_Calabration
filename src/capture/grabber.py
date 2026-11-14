@@ -3,6 +3,9 @@
 Opens the source at the expected size, sends small preview pictures (at most ~15 a second),
 keeps the latest full frame, and saves it when asked.  A frame that is the card's "No Signal"
 picture is never saved.  Closes the camera when stopped.
+
+A source with read_every_s (the Magewell inputs: 1 s) is read only that often - the preview
+then changes once a second - but a Grab reads a fresh frame straight away.
 """
 
 from __future__ import annotations
@@ -73,8 +76,16 @@ class GrabWorker(QThread):
         if not r.ok:
             return
         last_preview, misses, t_count, n_count, fps = 0.0, 0, time.monotonic(), 0, 0.0
+        every = float(getattr(self.source, "read_every_s", 0.0) or 0.0)
+        last_read = 0.0
         try:
             while not self._stop:
+                if every and time.monotonic() - last_read < every:
+                    with self._lock:
+                        waiting = self._pending is not None
+                    if not waiting:
+                        time.sleep(0.02)
+                        continue
                 f = self.source.read()
                 if f is None:
                     misses += 1
@@ -87,7 +98,8 @@ class GrabWorker(QThread):
                 misses = 0
                 n_count += 1
                 now = time.monotonic()
-                if now - t_count >= 1.0:
+                last_read = now
+                if not every and now - t_count >= 1.0:          # read slowly: the count means nothing
                     fps, n_count, t_count = n_count / (now - t_count), 0, now
                 with self._lock:
                     pending, self._pending = self._pending, None

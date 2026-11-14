@@ -3,10 +3,14 @@
 Layout (docs/capture/Capture_Instructions.md):
   top     Van, Use the van database, Camera list, where the list came from, Try again
           (Windows inputs only: which camera it is, its serial, its size)
-  centre  live preview, never stretched; camera, port, serial, expected / delivered size, fps
+  centre  live preview, never stretched; camera, port, serial, expected / delivered size, and
+          what the camera itself sends (Magewell: size, frame rate; updated once a second)
   bottom  folder, photo count, Grab, Countdown, last photos, Open in calibration app, Advanced...
   status  plain words
 Read only towards ARAN: opens, reads and closes one input; changes no settings.
+When the camera's own size is not the ACS (database) size the card is scaling the picture:
+Capture warns, asks once whether the crew knew, logs the answer, and still takes the photos
+at the ACS size (Derek, 2026-11-14).
 """
 
 from __future__ import annotations
@@ -18,7 +22,8 @@ from PySide6.QtCore import QProcess, QSettings, QSize, Qt, QThread, QTimer, Sign
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
-    QKeySequenceEdit, QLabel, QLineEdit, QMainWindow, QPushButton, QScrollArea, QSpinBox, QDoubleSpinBox,
+    QKeySequenceEdit, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton, QScrollArea, QSpinBox,
+    QDoubleSpinBox,
     QVBoxLayout, QWidget,
 )
 
@@ -108,6 +113,9 @@ class CaptureWindow(QMainWindow):
         self._log = None
         self._session = None          # this camera's subfolder in the base folder (first Grab)
         self._delivered = None
+        self._signal = None            # magewell.CameraSignal of the open camera (None = not known)
+        self._scaling = None           # {...} when the card scales the camera's picture (for the log)
+        self._scaling_asked = {}       # (port, expected) -> the crew's answer, asked once per window
         self._count = 0
         self._countdown_left = 0
         self._busy_saving = False
@@ -152,8 +160,8 @@ class CaptureWindow(QMainWindow):
         self.auto_mode = QComboBox(); self.auto_mode.addItems(["Smart", "Timer"])
         self.auto_mode.setToolTip("Smart: saves when the board is found, still and in a new spot.\n"
                                   "Timer: saves a photo every few seconds no matter what.")
-        self.every_spin = QDoubleSpinBox(); self.every_spin.setRange(0.5, 60.0); self.every_spin.setSingleStep(0.5)
-        self.every_spin.setValue(2.0); self.every_spin.setSuffix(" s"); self.every_spin.setToolTip("Timer: seconds between photos")
+        self.every_spin = QDoubleSpinBox(); self.every_spin.setRange(1.0, 60.0); self.every_spin.setSingleStep(0.5)
+        self.every_spin.setValue(1.0); self.every_spin.setSuffix(" s"); self.every_spin.setToolTip("Timer: seconds between photos")
         self.target_spin = QSpinBox(); self.target_spin.setRange(5, 200); self.target_spin.setValue(40)
         self.target_spin.setToolTip("Auto grab stops after this many photos")
         self.auto_label = QLabel("", self.preview); self.auto_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -367,7 +375,7 @@ class CaptureWindow(QMainWindow):
             src = bitflow.BitFlowSource(bitflow.board_number(cam.port), self.camera_name())
         else:
             from src.capture.source import DShowSource
-            src = DShowSource(index, self.camera_name())
+            src = DShowSource(index, self.camera_name(), port=cam.port)
         from src.capture.grabber import GrabWorker
         self._no_signal, self._warning = False, ""
         self._worker = GrabWorker(src, want[0], want[1], self.camera_name(), self)
@@ -387,6 +395,7 @@ class CaptureWindow(QMainWindow):
             w, self._worker = self._worker, None
             w.stop()
         self._delivered = None
+        self._signal, self._scaling = None, None
         self._sync_buttons()
 
     def _opened(self, r) -> None:
@@ -394,21 +403,59 @@ class CaptureWindow(QMainWindow):
             self.preview.setPixmap(QPixmap()); self.preview.setText("No picture")
             self._say(r.message, "red"); self._sync_buttons(); return
         self._delivered = (r.width, r.height)
+        self._signal = getattr(r, "signal", None)
+        kind = sizes.scaling(self._expected(), self._signal)
         warn = [w for w in (sizes.size_warning(self._expected(), self._delivered, self.camera_name()),
                             cam_list.other_pc_warning(self._cam)) if w]
+        if kind:
+            e = self._expected()
+            warn.append(f"{self.camera_name() or 'The camera'} sends {self._signal.text()}; photos are taken at "
+                        f"{e[0]} x {e[1]} (the card is {kind}).")
         self._warning = "  ".join(warn)            # stays up: a later "live" never hides it
         self._opened_again()
         self._update_info(0.0)
         self._sync_buttons()
+        if kind:
+            QTimer.singleShot(0, self._check_scaling)
+
+    def _check_scaling(self) -> None:
+        """Ask once whether the crew knew the card scales this camera; the photos stay at the ACS size."""
+        cam, e, sig = self._cam, self._expected(), self._signal
+        kind = sizes.scaling(e, sig)
+        if cam is None or not kind or self._closing:
+            return
+        key = (cam.port, e)
+        if key not in self._scaling_asked:
+            self._scaling_asked[key] = self._ask_scaling(
+                sizes.scaling_question(e, sig, self.camera_name(), cam.source == "database"))
+        knew = self._scaling_asked[key]
+        self._scaling = {"camera_signal": sig.text(), "camera_size": f"{sig.width}x{sig.height}",
+                         "interlaced": sig.interlaced, "camera_fps": sig.fps,
+                         "photo_size": f"{e[0]}x{e[1]}", "card": kind, "crew_knew": knew}
+        if self._log is not None:
+            self._log.data["scaling"] = self._scaling; self._log.write()
+        if knew is False:
+            self._warning += "  Check this camera's ACS settings."
+            self._opened_again()
+
+    def _ask_scaling(self, text: str) -> bool:
+        """Yes = the crew knew.  (Tests replace this.)"""
+        b = QMessageBox.question(self, "Camera size is not the ACS size", text,
+                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                 QMessageBox.StandardButton.Yes)
+        return b == QMessageBox.StandardButton.Yes
 
     def _update_info(self, fps: float) -> None:
         c = self._cam
         if c is None:
             self.info.setText(""); return
         e = self._expected()
+        sig = self._signal
+        rate = (f"   ·   camera sends {sig.text()}" if sig is not None and sig.locked
+                else f"   ·   {fps:.0f} frames/s" if fps else "")
         self.info.setText(f"Camera {self.camera_name() or '?'}   ·   input {c.port}   ·   serial {self.serial() or '?'}   ·   "
                           f"expected {e[0]} x {e[1]}" + (f"   ·   delivered {self._delivered[0]} x {self._delivered[1]}"
-                                                         if self._delivered else "") + (f"   ·   {fps:.0f} frames/s" if fps else ""))
+                                                         if self._delivered else "") + rate)
 
     def _show_preview(self, img, no_signal: bool, fps: float) -> None:
         pm = QPixmap.fromImage(img).scaled(self.preview.size(), Qt.AspectRatioMode.KeepAspectRatio,
@@ -464,6 +511,12 @@ class CaptureWindow(QMainWindow):
             self._log = CaptureLog(self._session, self.van_edit.text().strip().upper(), self.camera_name(),
                                    self._cam.source, self._cam.port, self.serial(), self._expected(),
                                    self._delivered, self.use_db.isChecked())
+            if self._signal is not None:
+                self._log.data["camera_signal"] = self._signal.text()
+            if self._scaling is not None:
+                self._log.data["scaling"] = self._scaling
+            if self._signal is not None or self._scaling is not None:
+                self._log.write()
         return True
 
     # ── auto grab (one person: hold the board, Capture saves) ────────────────

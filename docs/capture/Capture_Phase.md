@@ -256,6 +256,16 @@ ctypes, read only. Fall back silently if the DLL isn't installed. Check the SDK
 licence before shipping the DLL. Never call firmware, EDID, LED or input-source
 setters.
 
+**Started 2026-11-14 (ARAN59):** `src/capture/magewell.py` reads the camera's own size,
+frame rate and interlace when an input opens (DLL loaded from System32, not shipped).
+Broadcast cameras send what they are set to (1K/4K, 30-60 frames/s) and the card scales to
+the size asked, so when the ACS (database) size differs Capture warns, asks once whether
+the crew knew, logs `camera_signal` / `scaling` in CAPTURE_*.json, and still takes the
+photos at the ACS size (Derek). Magewell inputs are read once a second (a Grab reads at
+once); Auto grab looks only at new frames; Timer default 1 s. ARAN59: all three cameras
+1920 x 1080i at 29.97 frames/s; board/channel from the DLL = the "BB-C" in the input name.
+Not done yet: "no signal" before opening.
+
 ## Phase 8 — Extrinsic (Old School) collection (later)
 **Complexity:** Complex — spec separately with Derek (setups, site, GPS, naming).
 

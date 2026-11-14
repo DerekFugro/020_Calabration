@@ -6,11 +6,14 @@ Derek, 2026-11-14: "I can not move the board and press grab by myself."  His cho
   * stop by itself at a target count (default 40); the button stops it any time.
 
 Timer mode (Derek, 2026-11-14, while the board finder misses many GOX poses): save a
-photo every N seconds (default 2) no matter what - only the card's "no signal" picture is
+photo every N seconds (default 1) no matter what - only the card's "no signal" picture is
 skipped - and sort them out afterwards in the calibration app.
 
 A look runs about twice a second on the latest full frame (never slows the preview);
-the photo saved is the exact frame that was looked at.
+the photo saved is the exact frame that was looked at.  Only a NEW frame is looked at or
+saved: Magewell inputs are read once a second, and the same frame looked at twice would
+count as "held still" (Smart) or be saved twice (Timer).  So Smart needs the board held
+still for about 2 s on those inputs.
 Board finding uses the same settings as the calibration app's detector (src/detector.py:
 findChessboardCornersSB, 60 px white border; dot boards: src/dot_detector), so a photo
 auto grab keeps is one the calibration app can read.
@@ -141,6 +144,15 @@ class AutoGrabThread(QThread):
         self._stop = False
         self._answer = threading.Event()
         self._answer_ok, self._answer_sig = False, None
+        self._last = None                      # the last frame looked at / saved (never twice)
+
+    def _new_frame(self):
+        """The worker's latest frame if it is one not seen yet, else None."""
+        frame = self.worker.latest() if self.worker is not None else None
+        if frame is None or frame is self._last:
+            return None
+        self._last = frame
+        return frame
 
     def stop(self) -> None:
         self._stop = True
@@ -167,8 +179,11 @@ class AutoGrabThread(QThread):
             now = time.monotonic()
             if now < next_t:
                 time.sleep(min(0.05, next_t - now)); continue
+            latest = self.worker.latest() if self.worker is not None else None
+            if latest is not None and latest is self._last:
+                time.sleep(0.02); continue             # wait for a new frame (read once a second)
             next_t = now + self.every_s
-            frame = self.worker.latest() if self.worker is not None else None
+            frame = self._new_frame()
             if frame is None or is_no_signal(frame):
                 self.state.emit("no picture", n, target); continue
             if self._ask_save(frame):
@@ -183,7 +198,7 @@ class AutoGrabThread(QThread):
             self._boards = library_boards()
         while not self._stop:
             t0 = time.monotonic()
-            frame = self.worker.latest() if self.worker is not None else None
+            frame = self._new_frame()
             if frame is not None:
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
                 if self.board is None:
