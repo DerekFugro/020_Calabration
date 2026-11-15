@@ -10,7 +10,8 @@ folder. The SurveyorCalibration app then grades/calibrates that folder.
 State (2026-11-14): Phases 0-4 built and installed on ARAN99; Phase 5 (field test) bench
 part done (`field_test_v1.md`); Phase 9 GOX (BitFlow CoaXPress) built and checked on the
 real camera; Auto grab added, then (same day) replaced by Take 50 photos + the calibration
-app's Take 50 more; Magewell signal check (Phase 7, started). Not built: Phases 6 (live
+app's Take 50 more; Magewell signal check (Phase 7, started). First van with Magewell SDI
+cameras checked from source: ARAN59 (`ARAN59_results.md`). Not built: Phases 6 (live
 guidance), 8 (Old School collection).
 
 ## How to read this project
@@ -25,7 +26,8 @@ guidance), 8 (Old School collection).
 - Specs: `docs/capture/Capture_Instructions.md` (what to build),
   `docs/capture/Capture_Phase.md` (gated phases), this file.
 - Results (AUTHORITATIVE for real hardware): `docs/capture/bench_results.md` (Magewell on
-  ARAN99, and the GOX on the BitFlow card), `docs/capture/field_test_v1.md`.
+  ARAN99, and the GOX on the BitFlow card), `docs/capture/field_test_v1.md`,
+  `docs/capture/ARAN59_results.md` (van with 3 Magewell SDI cameras, all 1080i 29.97).
 - Standards: `docs/capture/standards/gui-coding-standards.md`,
   `docs/capture/standards/security-standards.md` (colours: use `src/styles.py`
   instead of the standards file's hex values).

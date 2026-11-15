@@ -8,6 +8,7 @@ installed program and the screen looked at (screenshots in `E:\SurveyorCalibrati
 |----|---------|-----------|----|
 | ARAN99-SERVER (bench) | 2026.11.14-1699e79 | 2026-11-14 03:06, Setup.exe, no restart | Claude, Derek OK'd the admin prompt |
 | ARAN69-SERVER | — | — | — |
+| ARAN59-Server | from source (479bae3, f100d54), not installed | — | Claude, 2026-11-14: see `ARAN59_results.md` |
 
 Note: the installed build is older than the source. Since it: the "SurveyorCapture is
 not installed" message, GOX (BitFlow) support, base folder + session subfolders,

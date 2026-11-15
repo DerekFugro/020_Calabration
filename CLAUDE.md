@@ -79,3 +79,12 @@ context], [inference]. Never claim something is tested or done unless it was.
 - **Remote tool timeouts:** long commands time out the remote shell; run them in the
   background writing to a log file, then read the log. Don't re-run something that
   changes state just because the reply timed out — check first.
+- **New PC setup (ARAN59):** `uv venv --python 3.12` can stop with "Missing expected target
+  directory for Python minor version link"; point it at the downloaded `python.exe`
+  instead. No `.gitconfig` there (identity set for the repo only). The first `git push`
+  must run in a real terminal so the GitHub sign-in window can open.
+- **Seeing the apps:** computer use can't find the Python windows by name; take window
+  pictures with PrintWindow (PowerShell) or `widget.grab()`. A test script that starts
+  Capture as a child keeps the output pipe open: write its output to a file.
+- **Made-up board photos with no tilt** give a hard stop (focal length not plausible), not
+  a plain NOT PASSED; tilt the board views when you need a NOT PASSED to test with.

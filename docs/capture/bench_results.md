@@ -26,6 +26,9 @@ FOURCC reported: not a real code (OpenCV hands back converted BGR frames)
    lists **00-1 before 00-0**, so numbers must never be assumed (as the spec says).
    With no signal both inputs show the same picture, so which index is which input
    can't be seen. Needs a source on one input (e.g. a laptop's HDMI into 00-0).
+   **Answered on ARAN59 (2026-11-14, `ARAN59_results.md`):** order 00-1, 00-0, 01-0, 01-1;
+   Capture finds inputs by name, and the Magewell library's board/channel = the "BB-C"
+   in the name.
 2. **Full native size — partly.** The card delivers **whatever size is asked**
    (640x480, 1920x1080, 3840x2160 all came back as asked). With **no size asked it
    silently gives 640x480** — so Capture must always ask for the expected size

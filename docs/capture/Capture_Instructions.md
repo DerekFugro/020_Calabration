@@ -22,7 +22,8 @@
 > - **Hand-over:** "Open in calibration app" passes `--camera` too; the calibration app
 >   picks that camera and keeps the folder.
 > - The 12x8 chessboard has its own finder in the calibration app (`src/marker_finder.py`).
-> Results: `bench_results.md`, `field_test_v1.md`. Lines below marked *(changed)* follow these.
+> Results: `bench_results.md`, `field_test_v1.md`, `ARAN59_results.md`. Lines below marked
+> *(changed)* follow these.
 
 ## ⭐ Project name:
 **SurveyorCapture** — the photo collection program of the SurveyorCalibration app
