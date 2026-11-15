@@ -91,5 +91,15 @@ context], [inference]. Never claim something is tested or done unless it was.
 - **Seeing the apps:** computer use can't find the Python windows by name; take window
   pictures with PrintWindow (PowerShell) or `widget.grab()`. A test script that starts
   Capture as a child keeps the output pipe open: write its output to a file.
+- **Van PC clock can be wrong (ARAN59, 2026-11-15: 59 min fast, not synced).** Photo times
+  come from the PC, POS times from GNSS. Never tie photos to POS data by PC time; Old School
+  ties them by folder. `tools/oldschool_pos_check.py` measures the offset.
+- **POS heading wanders on a parked van** (0.1-0.2° in 5 min, 0.5° over 30 min). Judge "van
+  moved" by position, speed, roll and pitch; heading wander is logged only (Derek).
+- **POS logger:** the installed `ACSApps\POSProcessing\POSProcessing.exe` is used first
+  (`src/capture/pos_link.py`). Only one program may log the POS (not POSView's Ethernet
+  logging at the same time). Test runs go to `E:\DP\SurveyorTest_OldSchool\` (Derek can
+  open it), not only the scratchpad.
+- **Whole Old School process without a van:** `tools/oldschool_dryrun.py`.
 - **Made-up board photos with no tilt** give a hard stop (focal length not plausible), not
   a plain NOT PASSED; tilt the board views when you need a NOT PASSED to test with.

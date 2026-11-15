@@ -64,6 +64,22 @@ library: total frame 2200 × 1125, frame time 333 667 × 100 ns = 29.97 frames/s
 at the same time (FR Video Service was stopped), so "busy input" is still untested on a
 Magewell van.
 
+## Old School collection with the POS logger (2026-11-15)
+- **POS:** Applanix POS LV on this van (PCS 192.168.0.40), OmniSTAR G2, 31-33 satellites,
+  RMS about 0.35 / 0.35 / 0.45 m. POSView was open; FR Video Service stopped.
+- **POS app:** first from its source folder, then the installed
+  `C:\Program Files\Fugro Roadware\ACSApps\POSProcessing\POSProcessing.exe` (protocol 2).
+  Green in 3.6-5 s; quit gives `bye`, exit 0, no copy left running.
+- **Two real 5-minute ROW positions** (copies in `E:\DP\SurveyorTest_OldSchool\`): 5 photos
+  each, 15 000 POS rows each, green the whole time; full recording 50 a second, no gaps,
+  lever arms present. All the data is there (`tools/oldschool_pos_check.py`).
+- **Parked van, heading wanders:** position within 1-2 cm, speed 0, roll / pitch within
+  0.025°, but the POS heading moved 0.10-0.21° in 5 minutes, and the 5-minute average was
+  68.61° at 17:10 and 68.06° at 17:28 (same spot). "Van moved" therefore ignores heading;
+  the wander is logged only (Derek). It will show in the camera's pan [inference].
+- **PC clock 59 minutes fast** (not synced, "Local CMOS Clock"): photo times 59 min off
+  the POS. Derek fixed it the same evening (then ~70 s off internet time).
+
 ## Setting up this PC (2026-11-14)
 - The folder was linked to GitHub with `git init` + `git reset origin/main` (no clone):
   same result, `main` tracks `origin/main`.

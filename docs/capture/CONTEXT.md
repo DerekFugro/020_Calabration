@@ -11,8 +11,13 @@ State (2026-11-14): Phases 0-4 built and installed on ARAN99; Phase 5 (field tes
 part done (`field_test_v1.md`); Phase 9 GOX (BitFlow CoaXPress) built and checked on the
 real camera; Auto grab added, then (same day) replaced by Take 50 photos + the calibration
 app's Take 50 more; Magewell signal check (Phase 7, started). First van with Magewell SDI
-cameras checked from source: ARAN59 (`ARAN59_results.md`). Not built: Phases 6 (live
-guidance), 8 (Old School collection).
+cameras checked from source: ARAN59 (`ARAN59_results.md`). Not built: Phase 6 (live
+guidance).
+State (2026-11-15): Phase 8 (Old School collection with the POS logger) built, tasks 1-4:
+Capture's Old School mode + Camera position reading its folders. Checked: the whole process
+on a made-up day (`tools/oldschool_dryrun.py`), and real 5-minute positions on ARAN59 (ROW +
+installed POS app) with all photos and POS data there (`tools/oldschool_pos_check.py`).
+Not yet: a full real test (several cameras and positions at a surveyed site).
 
 ## How to read this project
 - Calibration app (existing, working): `main.py`, `cli.py`, `src/` (detector,
@@ -22,7 +27,10 @@ guidance), 8 (Old School collection).
 - Capture (built): `src/capture/` only, plus the start screen's launch button
   (`src/widgets/launcher.py`), `tools/capture_bench.py` (Phase 1 bench script), tests in
   `tests/test_capture_*.py`. GOX: `src/capture/bitflow.py`; Auto grab:
-  `src/capture/autograb.py`.
+  `src/capture/autograb.py`.  Old School (Phase 8): `src/capture/pos_link.py`,
+  `oldschool.py`, `oldschool_panel.py`; Camera position side `src/extrinsic/oldschool.py`.
+  The POS logger is Derek's POSProcessing app (repo `DerekFugro/POSProcessing`; protocol in
+  its `docs/Comunication4OtherApps.md`). Check tools: `tools/oldschool_*.py`.
 - Specs: `docs/capture/Capture_Instructions.md` (what to build),
   `docs/capture/Capture_Phase.md` (gated phases), this file.
 - Results (AUTHORITATIVE for real hardware): `docs/capture/bench_results.md` (Magewell on

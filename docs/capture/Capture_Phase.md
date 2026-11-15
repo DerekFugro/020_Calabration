@@ -274,7 +274,7 @@ once); Auto grab looks only at new frames; Timer default 1 s. ARAN59: all three 
 1920 x 1080i at 29.97 frames/s; board/channel from the DLL = the "BB-C" in the input name.
 Not done yet: "no signal" before opening.
 
-## Phase 8 — Extrinsic (Old School) collection (planned 2026-11-15, not started)
+## Phase 8 — Extrinsic (Old School) collection (built 2026-11-15; full real test to do)
 **Complexity:** Complex — two programs (Surveyor Capture + the POS logger,
 `E:\DP\POSProcessor`, repo `DerekFugro/POSProcessing`).
 
@@ -384,10 +384,22 @@ Shown when the 5 minutes end, one line, PASS / NOT PASSED like the rest of the a
 ### Done when
 - [x] POS app: `mark` with a folder writes the CSV there (tests + a real POS run; POS app's
       report 2026-11-15, not re-checked from this repo).
-- [ ] On a van: Capture starts the POS logger, waits for green, saves ≥ 3 positions for one
-      camera; each `PositionN` holds the photo and a full 5-minute POS CSV (opened and checked).
+- [x] The whole process on a made-up Richmond day (`tools/oldschool_dryrun.py`, real apps,
+      fake camera + fake POS, 2026-11-15): 5 ROW positions, the one with the van creeping
+      0.5 m rated NOT PASSED and left out; Camera position solved the other 4 and gave back
+      the camera place to 0.007° and 1 mm, PASS; Save all formats wrote every file.
+- [x] Real data complete (`tools/oldschool_pos_check.py`, 2026-11-15): two real 5-minute
+      ROW positions on ARAN59 (one with the installed POS app): full POS recording 50 a
+      second, no gaps, groups 1/2/3, lever arms; each position CSV 15 000/15 000 readings,
+      the same as the recording; 5/5 photos open, 1920 x 1080, taken within 1 s of the mark.
+- [x] Closing Capture stops the POS logger cleanly (`bye`, exit 0, not killed).
+- [ ] On a van, the full test: several cameras, ≥ 3 positions each (Derek, when ready).
 - [ ] Camera position (Load Extrinsic) solves that folder at a surveyed site; report looked at.
-- [ ] Closing Capture stops the POS logger cleanly (`bye`, files closed).
+
+**Found 2026-11-15:** ARAN59's PC clock was **59 minutes fast** and not synced ("Local CMOS
+Clock"); photo times come from the PC, POS times from GNSS. Old School ties photos to POS
+data by folder, so it was not affected; the data check measures the offset. Derek set the
+clock (afterwards ~70 s off internet time). Check the clock before a real test.
 
 ## Phase 9 — CoaXPress cameras (GOX started 2026-11-14)
 **Complexity:** Complex — BitFlow frame grabber, via the BitFlow SDK, as a second

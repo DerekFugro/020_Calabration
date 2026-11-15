@@ -27,7 +27,7 @@ from another van). Choices:
 |---|---|
 | **Collect lens photos** | SurveyorCapture, as its own process (`--van`, `--no-db` when unticked) |
 | **Calibrate lens** | main window, Load Intrinsic |
-| **Collect Old School photos** | SurveyorCapture in Old School mode (`--old-school`): asks for a root folder, makes `ExtrinsicAran<XX>_<date time>`, starts the POS logger (`E:\DP\POSProcessor`); per camera, **Save image** at each position = `<camera>\Position<N>` with 5 photos + 5 minutes of POS data, rated PASS / NOT PASSED. The Camera position step does not read these folders yet (Phase 8 task 4). |
+| **Collect Old School photos** | SurveyorCapture in Old School mode (`--old-school`): asks for a root folder, makes `ExtrinsicAran<XX>_<date time>`, starts the POS logger (installed `ACSApps\POSProcessing\POSProcessing.exe`, else its source folder); per camera, **Save image** at each position = `<camera>\Position<N>` with 5 photos + 5 minutes of POS data, rated PASS / NOT PASSED (POS green the whole time, van still, a sharp photo). |
 | **Camera position** | main window, Load Extrinsic |
 | Boards… | main window, Boards |
 
@@ -45,7 +45,7 @@ it). With it off, pick the camera from the usual list and type the serial.
 | Tab | What it does |
 |---|---|
 | **Load Intrinsic** (one camera) | Pick the photo folder, Run. If the folder was calibrated before, **Open results** or **Reprocess**. The report shows the PASS / NOT PASSED banner, why, what to shoot next, the 3×3 coverage grid, photos left out and the numbers. **Check by re-running** compares a saved result with today's app. **Save all formats** writes `CAL_<serial>_<date>.yaml/.pdf` next to the photos and every fleet format into `Calibration_<date>\`. **Open report** opens the PDF. |
-| **Load Extrinsic** (one camera) | Pick one camera's Old School folder; the lens is this session's Load Intrinsic result for the camera in the bar (or a lens file). Finds the wall discs and tennis balls itself, drops wrong targets, solves and combines the setups. Control is always the tennis-ball GCP in `control/Richmond`. If the folder was solved before you are asked: open it or solve again. **Save all formats** writes `<setup>\<photo>.EOP` beside each photo exactly as the old Old School program did, plus overlays, YAML, JSON, CSV, PDF, RWC and the office page `_CHECK.html` into `Extrinsic_<date>\`. A lens that did not pass is flagged everywhere. |
+| **Load Extrinsic** (one camera) | Pick one camera's Old School folder; the lens is this session's Load Intrinsic result for the camera in the bar (or a lens file). Finds the wall discs and tennis balls itself, drops wrong targets, solves and combines the setups. Control is always the tennis-ball GCP in `control/Richmond`. If the folder was solved before you are asked: open it or solve again. **Save all formats** writes `<setup>\<photo>.EOP` beside each photo exactly as the old Old School program did, plus overlays, YAML, JSON, CSV, PDF, RWC and the office page `_CHECK.html` into `Extrinsic_<date>\`. A lens that did not pass is flagged everywhere. Also reads Capture's `Position<N>` folders: the POS logger's CSV (used as it is), the sharpest photo, the date from Capture's log; positions rated NOT PASSED are left out. |
 | **Boards** | Add a board (dot layout CSV or chessboard) to the board library, print the true-scale PDF, measure it, test auto-detect. |
 
 **Saving again never leaves two answers side by side:** earlier results in the folder
@@ -209,7 +209,16 @@ src  pipeline.py           THE lens calibration path (run_folder)
             report_screen.py, extrinsic_screen.py, boards_tab.py, zoom_view.py
   capture\  SurveyorCapture: window.py, grabber.py (camera thread), source.py
             (Magewell/DirectShow + fake), bitflow.py (GOX), autograb.py, cameras.py,
-            saver.py, capture_log.py, nosignal.py, sizes.py, dshow_names.py, errors.py
+            saver.py, capture_log.py, nosignal.py, sizes.py, dshow_names.py, errors.py,
+            magewell.py (signal check), pos_link.py (POS logger), oldschool.py (folders,
+            position rating), oldschool_panel.py (Old School screen part)
+
+tools  capture_bench.py         Phase 1 bench script
+       oldschool_dryrun.py      the whole Old School process on a made-up Richmond day
+                                (real apps, fake camera + fake POS): Capture -> Camera position
+       oldschool_fake_site.py   draws the targets a camera at a known place would see
+       oldschool_pos_check.py   are all the photos and POS data there? (run with the POS
+                                app's Python: E:\DP\POSProcessor\.venv\Scripts\python.exe)
 ```
 
 ## Notes
