@@ -67,12 +67,14 @@ Magewell van.
 ## Setting up this PC (2026-11-14)
 - The folder was linked to GitHub with `git init` + `git reset origin/main` (no clone):
   same result, `main` tracks `origin/main`.
-- **Python:** no Python on PATH (only the Microsoft Store alias). `uv venv --python 3.12`
-  downloaded 3.12.16 but stopped with "Missing expected target directory for Python minor
-  version link". Worked around by pointing uv at the downloaded `python.exe`
-  (`C:\Users\dvs\AppData\Roaming\uv\python\cpython-3.12.16-windows-x86_64-none\python.exe`).
-  Then `uv pip install -r requirements.txt`: PySide6 6.12.0, OpenCV 5.0.0, numpy 2.5.4.
-  All tests pass. BFModule not installed (no BitFlow here).
+- **Python:** no Python on PATH (only the Microsoft Store alias). First set up from inside
+  the Claude desktop app with uv's default Python folder in AppData. That app keeps AppData
+  files in its own private copy, so the `.venv` worked inside Claude but **launch.bat
+  failed** from File Explorer ("No module named PySide6": uv fell back to another Python).
+  **Fixed 2026-11-15:** Python 3.12.16 now lives in the project, `.uv\python`
+  (`UV_PYTHON_INSTALL_DIR`, git-ignored, as CompareRemovables does); `.venv` rebuilt from it;
+  PySide6 6.12.0, OpenCV 5.0.0, numpy 2.5.4. launch.bat opened from File Explorer shows the
+  start screen; all tests pass. BFModule not installed (no BitFlow here).
 - **Git:** no `C:\Users\dvs\.gitconfig` on this PC; name and email set for this repo only
   (`dapfromcanada`). The first push needs the GitHub sign-in window (Git Credential
   Manager), so run it in a real terminal, not a background job (that fails with "could

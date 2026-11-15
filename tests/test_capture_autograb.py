@@ -103,7 +103,7 @@ def test_adding_mode_saves_straight_into_the_graded_folder(app, tmp_path, monkey
     graded = tmp_path / "ROW_88888888_20261114_120000"; graded.mkdir()
     (graded / "ROW_old.jpg").write_bytes(b"x")
     base = tmp_path / "base"; base.mkdir()
-    from PySide6.QtCore import QSettings
+    from src.capture.window import QSettings          # the test copy (tests/conftest.py), never the registry
     QSettings("SidewalkProfiler", "SurveyorCapture").setValue("folder", str(base))
     w = _window(app, tmp_path, camera="ROW", add_to=str(graded))
     assert w.folder_title.text() == "Adding to:" and w.folder_edit.text() == str(graded)
