@@ -274,8 +274,84 @@ once); Auto grab looks only at new frames; Timer default 1 s. ARAN59: all three 
 1920 x 1080i at 29.97 frames/s; board/channel from the DLL = the "BB-C" in the input name.
 Not done yet: "no signal" before opening.
 
-## Phase 8 — Extrinsic (Old School) collection (later)
-**Complexity:** Complex — spec separately with Derek (setups, site, GPS, naming).
+## Phase 8 — Extrinsic (Old School) collection (planned 2026-11-15, not started)
+**Complexity:** Complex — two programs (Surveyor Capture + the POS logger,
+`E:\DP\POSProcessor`, repo `DerekFugro/POSProcessing`).
+
+### What Derek decided (2026-11-15)
+- **Surveyor's Capture takes the photos.** ARAN's video is off; there is no ARAN CSV.
+- **New files only.** Old ARAN collections and their CSVs are never read by this flow.
+- **One camera at a time:** the crew does every position for one camera, then the next.
+- Capture **starts the POS logger** (`app.py --surveyor`, see the POS app's
+  `docs/Comunication4OtherApps.md`). At each position the crew clicks **Save image**:
+  Capture makes `<site>\<camera>\PositionN\`, saves the photo there, and sends the POS
+  logger a `mark` **with that folder**, so the POS CSV is written into the same folder.
+- The POS logs **5 minutes** per position (the van stays parked).
+- Old School uses the **POS logger's values as they are** (position, heading, roll, pitch).
+
+### Folder layout
+```
+<root picked by the crew>\ExtrinsicAran<XX>_<YYYYMMDD_HHMMSS>\
+  ROW\
+    Position1\  ROW_<serial>_<time>.jpg (a few)   <POS mark>.csv   CAPTURE_*.json (with the rating)
+    Position2\  ...
+  RearLeft\
+    Position1\  ...
+  SurveyorPOS_YYYYMMDD_HHMMSS\  LV_1_*.000 ...  marks.csv   (the full POS recording)
+```
+
+### Tasks
+1. **POS app (POSProcessing repo, its own commit):** `mark` takes an optional `"folder"`.
+   When given, the CSV goes in that folder (not `<session>\marks\`); `marks.csv` in the
+   session folder still lists every mark with its full path. Protocol stays version 1
+   (the field is optional). Update `Comunication4OtherApps.md` and its tests.
+2. **POS link in Capture** (`src/capture/pos_link.py`, no Qt in the protocol part): start
+   `pythonw.exe app.py --surveyor --out <site folder>` with pipes, read lines on a thread,
+   `status` / `mark` / `quit`; never kill it except as a last resort (wait ~10 s for `bye`).
+   Not found / no `logging` in 30 s → plain message, Save image stays off.
+3. **Capture, Old School mode** (`--old-school <site folder>`): same window and camera bar,
+   one camera picked; the POS light (green / orange / red + the POS app's message) shown
+   big; **Save image** only when `ok_to_collect` is true; after Save, a 5-minute countdown
+   ("Keep the van parked") until `mark_done`; then the position's rating (below) and
+   "Move to the next position" or "Redo this position". The next
+   free `PositionN` is found from the folder (a redo never overwrites).
+4. **Old School reader** (`src/extrinsic/oldschool.py`): also read the POS mark CSV columns
+   (`lat_deg, lon_deg, height_m, roll_deg, pitch_deg, heading_deg, align_status, rms_*`).
+   The date for true north comes from the CSV / capture log, not the folder name
+   (`setup_date` reads `YYYYMMDD` from the name today; `Position1` has none).
+   Height is metres, ellipsoidal (ARAN CSVs were feet) — shown as raw only, as today.
+   Pick the sharpest of the position's photos; skip positions rated NOT PASSED.
+5. **Start screen:** "Collect Old School photos" turns on and opens Capture in Old School mode.
+6. **Tests:** fake POS logger (a small script speaking the same JSON lines) for the link and
+   the window; reader on a made-up mark CSV; folder numbering; Capture boundary test kept.
+
+### Settled with Derek (2026-11-15)
+- **Site folder:** the app asks the crew for a **root** folder once, then builds
+  `<root>\ExtrinsicAran<XX>_<YYYYMMDD_HHMMSS>\` itself (XX = van number). The POS logger's
+  `--out` is that folder.
+- **Photos per position:** a few (e.g. 5, 1 s apart), **all kept**; the calibration app
+  uses the sharpest one. `oldschool.py` must pick among several photos (it takes the first today).
+- **During the 5 minutes:** wait. Save image is off until the POS CSV is done; one camera
+  per position.
+- **POS goes orange / red:** each position is **rated** (images and POS data), not just kept
+  or dropped. Rating rules: below, to confirm with Derek.
+
+### Position rating (agreed 2026-11-15; exact limits set on the first real van run)
+Shown when the 5 minutes end, one line, PASS / NOT PASSED like the rest of the app:
+- **POS:** PASS if the light stayed green the whole 5 minutes (full navigation, 5+
+  satellites, position RMS < 1 m) and the van did not move (roll / pitch / heading spread
+  small). Otherwise NOT PASSED: "POS lost accuracy" or "the van moved".
+- **Photos:** PASS if at least one photo is sharp and has a picture (not the card's
+  "no signal" screen). Otherwise NOT PASSED: "photos blurry / no picture".
+- NOT PASSED → "Redo this position"; the folder is kept, its rating saved in the log, and
+  the solve skips it.
+
+### Done when
+- [ ] POS app: `mark` with a folder writes the CSV there (tests + a real POS run).
+- [ ] On a van: Capture starts the POS logger, waits for green, saves ≥ 3 positions for one
+      camera; each `PositionN` holds the photo and a full 5-minute POS CSV (opened and checked).
+- [ ] Camera position (Load Extrinsic) solves that folder at a surveyed site; report looked at.
+- [ ] Closing Capture stops the POS logger cleanly (`bye`, files closed).
 
 ## Phase 9 — CoaXPress cameras (GOX started 2026-11-14)
 **Complexity:** Complex — BitFlow frame grabber, via the BitFlow SDK, as a second
