@@ -305,10 +305,23 @@ Not done yet: "no signal" before opening.
    When given, the CSV goes in that folder (not `<session>\marks\`); `marks.csv` in the
    session folder still lists every mark with its full path. Protocol stays version 1
    (the field is optional). Update `Comunication4OtherApps.md` and its tests.
+   **Done 2026-11-15, POSProcessing `f514b5a` (protocol 2)** [from the POS app's report]:
+   the folder must already exist (Capture makes it first), else `ok: false` + error and no
+   mark number used; `mark_done` / `closed_marks` carry `complete, rows, green_whole_time,
+   worst_light, worst_message, max_rms_n/e/d_m, roll/pitch/heading_spread_deg, time_type,
+   first/last_time1_s`; the mark CSV gained `light, message` columns; `hello` says
+   `protocol: 2` (Capture must refuse `folder` marks on 1). `height_m` = ellipsoidal metres;
+   position = the POS reference point (no lever arm added); 300 s = ~15 000 rows by the POS
+   clock, and the mark still ends on time by the PC clock if navigation stops (fewer rows).
 2. **POS link in Capture** (`src/capture/pos_link.py`, no Qt in the protocol part): start
    `pythonw.exe app.py --surveyor --out <site folder>` with pipes, read lines on a thread,
    `status` / `mark` / `quit`; never kill it except as a last resort (wait ~10 s for `bye`).
    Not found / no `logging` in 30 s → plain message, Save image stays off.
+   **Done 2026-11-15** (`PosLink`; tests with `tests/fake_pos_logger.py`). Real check on
+   ARAN59 (POSView open, POS app protocol 2): green in 4.6 s (OmniSTAR G2, 33 satellites);
+   a 15 s mark into `ROW\Position1` gave 750 rows, green the whole time, RMS 0.35/0.35/0.45 m,
+   spread ≤ 0.017°; a missing folder was refused; quit → `bye`, exit 0, not killed. Files
+   opened: the mark CSV, `marks.csv` (full path) and one `.000` in `SurveyorPOS_<date time>`.
 3. **Capture, Old School mode** (`--old-school <site folder>`): same window and camera bar,
    one camera picked; the POS light (green / orange / red + the POS app's message) shown
    big; **Save image** only when `ok_to_collect` is true; after Save, a 5-minute countdown
@@ -347,7 +360,8 @@ Shown when the 5 minutes end, one line, PASS / NOT PASSED like the rest of the a
   the solve skips it.
 
 ### Done when
-- [ ] POS app: `mark` with a folder writes the CSV there (tests + a real POS run).
+- [x] POS app: `mark` with a folder writes the CSV there (tests + a real POS run; POS app's
+      report 2026-11-15, not re-checked from this repo).
 - [ ] On a van: Capture starts the POS logger, waits for green, saves ≥ 3 positions for one
       camera; each `PositionN` holds the photo and a full 5-minute POS CSV (opened and checked).
 - [ ] Camera position (Load Extrinsic) solves that folder at a surveyed site; report looked at.
