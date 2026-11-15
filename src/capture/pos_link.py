@@ -1,7 +1,9 @@
 """pos_link.py - Capture's link to the POS logger (Phase 8, Old School collection).
 
-The POS logger is Derek's POS PPK Processor (E:\\DP\\POSProcessor, repo POSProcessing).
-Capture starts it as a child process with pipes; the two exchange one JSON object per line
+The POS logger is Derek's POS PPK Processor (repo POSProcessing).  Installed (the normal
+case): C:\\Program Files\\Fugro Roadware\\ACSApps\\POSProcessing\\POSProcessing.exe; on a
+development PC its source folder (E:\\DP\\POSProcessor, .venv pythonw.exe app.py) is used when no
+install is found.  Capture starts it as a child process with pipes; the two exchange one JSON object per line
 (its docs/Comunication4OtherApps.md, protocol 2).  It records the POS LV while Capture
 is open; at each Old School position Capture sends `mark` with the position's folder and
 the POS logger writes 5 minutes of POS navigation into that folder, then sends `mark_done`
@@ -23,7 +25,9 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-POS_APP = r"E:\DP\POSProcessor"
+POS_INSTALLED = r"C:\Program Files\Fugro Roadware\ACSApps\POSProcessing"
+POS_SOURCE = r"E:\DP\POSProcessor"          # development PC only
+EXE = "POSProcessing.exe"
 NEED_PROTOCOL = 2              # 2 = mark into a given folder + mark summaries
 LOGGING_WAIT_S = 30.0          # hello + logging should come within this
 REPLY_WAIT_S = 10.0
@@ -91,8 +95,21 @@ class MarkResult:
 
 
 def app_argv(app_dir: str, out: str) -> list[str]:
-    """The POS app's own Python, no console window (not launch.bat: it drops the pipes)."""
+    """Installed: POSProcessing.exe (no console window).  Source folder: its own pythonw.exe
+    app.py (not launch.bat: it drops the pipes)."""
+    exe = os.path.join(app_dir, EXE)
+    if os.path.isfile(exe):
+        return [exe, "--surveyor", "--out", out]
     return [os.path.join(app_dir, ".venv", "Scripts", "pythonw.exe"), "app.py", "--surveyor", "--out", out]
+
+
+def find_app() -> str:
+    """The installed POS app, else its source folder (development PC), else the install path."""
+    if os.path.isfile(os.path.join(POS_INSTALLED, EXE)):
+        return POS_INSTALLED
+    if os.path.isfile(os.path.join(POS_SOURCE, ".venv", "Scripts", "pythonw.exe")):
+        return POS_SOURCE
+    return POS_INSTALLED
 
 
 def command_line(cmd: str, id=None, **fields) -> str:
@@ -119,8 +136,8 @@ class PosLink:
 
     `argv` / `cwd` replace the real app (tests use a fake POS logger)."""
 
-    def __init__(self, app_dir: str = POS_APP, argv: list | None = None, cwd: str | None = None):
-        self.app_dir = app_dir
+    def __init__(self, app_dir: str | None = None, argv: list | None = None, cwd: str | None = None):
+        self.app_dir = app_dir or find_app()
         self._argv, self._cwd = argv, cwd
         self.proc: subprocess.Popen | None = None
         self.messages: queue.Queue = queue.Queue()    # every message, for the window

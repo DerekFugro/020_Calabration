@@ -342,6 +342,11 @@ Not done yet: "no signal" before opening.
    minutes (68.07° at 16:43, 68.58° at 17:10). "Moved" now uses position, speed, roll and
    pitch only; the heading spread is logged. The same position re-rated: PASS.
    Derek (2026-11-15): heading wander is **logged only**, never a reason for NOT PASSED.
+   **Installed POS app** (`C:\Program Files\Fugro Roadware\ACSApps\POSProcessing\POSProcessing.exe`,
+   POSProcessing `27adab2`) is used first; the source folder only when no install is found.
+   Same real check with it (17:28): green in 3.6 s; 5 photos; 15 000 rows green the whole
+   time; van still (1 cm, speed 0, heading wander 0.10° logged); **Position 1: PASS**;
+   `bye`, exit 0, no POSProcessing.exe left running.
 5. **Start screen:** "Collect Old School photos" turns on and opens Capture in Old School mode.
    **Done 2026-11-15** (`--old-school [root]`).
 6. **Tests:** fake POS logger (a small script speaking the same JSON lines) for the link and

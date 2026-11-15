@@ -22,7 +22,7 @@ def test_lines_and_the_real_app_command():
         == {"cmd": "mark", "label": "Position1", "folder": "F:\\x", "id": 3}
     assert pos_link.parse_line('{"type":"bye"}\n') == {"type": "bye"}
     assert pos_link.parse_line("garbage") is None and pos_link.parse_line("[1]") is None
-    argv = pos_link.app_argv(r"E:\DP\POSProcessor", "F:\\")
+    argv = pos_link.app_argv(r"E:\no_such_folder", "F:\\")
     assert argv[0].endswith(r".venv\Scripts\pythonw.exe") and argv[1:] == ["app.py", "--surveyor", "--out", "F:\\"]
     assert pos_link.MARK_SECONDS == 300 and pos_link.NEED_PROTOCOL == 2
 
@@ -107,6 +107,16 @@ def test_orange_light_is_not_ok_to_collect(tmp_path):
         assert st.logging and not st.ok_to_collect and st.message == "Few satellites"
     finally:
         pos.close()
+
+
+def test_installed_exe_is_used_first(tmp_path, monkeypatch):
+    inst, src = tmp_path / "ACSApps" / "POSProcessing", tmp_path / "POSProcessor"
+    (src / ".venv" / "Scripts").mkdir(parents=True); (src / ".venv" / "Scripts" / "pythonw.exe").write_bytes(b"")
+    monkeypatch.setattr(pos_link, "POS_INSTALLED", str(inst)); monkeypatch.setattr(pos_link, "POS_SOURCE", str(src))
+    assert pos_link.find_app() == str(src)                         # development PC: no install
+    inst.mkdir(parents=True); (inst / "POSProcessing.exe").write_bytes(b"")
+    assert pos_link.find_app() == str(inst) and PosLink().app_dir == str(inst)
+    assert pos_link.app_argv(str(inst), "F:\\") == [str(inst / "POSProcessing.exe"), "--surveyor", "--out", "F:\\"]
 
 
 def test_app_not_found(tmp_path):
