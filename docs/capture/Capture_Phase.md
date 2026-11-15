@@ -334,7 +334,16 @@ Not done yet: "no signal" before opening.
    (`setup_date` reads `YYYYMMDD` from the name today; `Position1` has none).
    Height is metres, ellipsoidal (ARAN CSVs were feet) — shown as raw only, as today.
    Pick the sharpest of the position's photos; skip positions rated NOT PASSED.
+   **Built 2026-11-15** (`oldschool.py` folder names + rating, `oldschool_panel.py`, window
+   Old School mode). Real check on ARAN59 (ROW, POS app, one full 5-minute position): green in
+   5 s; 5 photos 1920 x 1080 (sharpness ~770); 15 000 POS rows, green the whole time, RMS
+   0.35/0.35/0.45 m; clean `bye`. It first said "the van moved": the van was parked (position
+   within 2.4 cm, speed 0, roll / pitch 0.025°) but the **POS heading wandered 0.21°** in 5
+   minutes (68.07° at 16:43, 68.58° at 17:10). "Moved" now uses position, speed, roll and
+   pitch only; the heading spread is logged. The same position re-rated: PASS.
+   Derek (2026-11-15): heading wander is **logged only**, never a reason for NOT PASSED.
 5. **Start screen:** "Collect Old School photos" turns on and opens Capture in Old School mode.
+   **Done 2026-11-15** (`--old-school [root]`).
 6. **Tests:** fake POS logger (a small script speaking the same JSON lines) for the link and
    the window; reader on a made-up mark CSV; folder numbering; Capture boundary test kept.
 

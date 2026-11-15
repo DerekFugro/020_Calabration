@@ -9,6 +9,9 @@ Layout (docs/capture/Capture_Instructions.md):
           Open in calibration app, Advanced...
 Adding mode (add_to / --add-to): the calibration app's "Take 50 more" opens Capture on the photo
 folder it graded; new photos go straight into that folder (no new subfolder).
+Old School mode (old_school / --old-school, Phase 8): asks for a root folder, makes
+ExtrinsicAran<XX>_<date time> in it, starts the POS logger, and shows the Old School panel
+(POS light, Save image, 5-minute wait, rating) instead of the lens-photo buttons.
   status  plain words
 Read only towards ARAN: opens, reads and closes one input; changes no settings.
 When the camera's own size is not the ACS (database) size the card is scaling the picture:
@@ -105,8 +108,12 @@ class CaptureWindow(QMainWindow):
     for tests and PCs without a card; otherwise the real DirectShow inputs are used."""
 
     def __init__(self, van: str = "", camera: str = "", folder: str = "", use_db: bool = True,
-                 source_factory=None, names: list[str] | None = None, parent=None, add_to: str = "") -> None:
+                 source_factory=None, names: list[str] | None = None, parent=None, add_to: str = "",
+                 old_school: bool = False, os_root: str = "", pos_factory=None) -> None:
         super().__init__(parent)
+        self._old_school, self._os_root, self._pos_factory = old_school, os_root, pos_factory
+        self._os = None               # OldSchoolPanel in Old School mode
+        self._os_paths: list = []     # photos saved for the position being collected
         self._args = (van, camera, folder, use_db)
         self._add_to = Path(add_to) if add_to else None   # photos go straight into this folder
         self._factory, self._names = source_factory, names
@@ -175,6 +182,9 @@ class CaptureWindow(QMainWindow):
         self.open_cal_btn = QPushButton("Open in calibration app")
         self.advanced_btn = QPushButton("Advanced...")
         self.status = QLabel("")
+        if self._old_school:
+            from src.capture.oldschool_panel import OldSchoolPanel
+            self._os = OldSchoolPanel(self._pos_factory, self)
 
     def _create_layouts(self) -> None:
         top = QHBoxLayout(); top.setSpacing(SPACING)
@@ -201,7 +211,10 @@ class CaptureWindow(QMainWindow):
         lay = QVBoxLayout(central); lay.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN); lay.setSpacing(SPACING)
         lay.addLayout(top); lay.addWidget(self.list_label); lay.addWidget(self.user_row)
         lay.addWidget(self.preview, 1); lay.addWidget(self.info)
-        lay.addLayout(fold); lay.addLayout(acts); lay.addWidget(self.thumbs_scroll); lay.addWidget(self.status)
+        lay.addLayout(fold); lay.addLayout(acts)
+        if self._os is not None:
+            lay.addWidget(self._os)
+        lay.addWidget(self.thumbs_scroll); lay.addWidget(self.status)
         self.setCentralWidget(central)
 
     def _connect_signals(self) -> None:
@@ -221,6 +234,10 @@ class CaptureWindow(QMainWindow):
         self.open_cal_btn.clicked.connect(self._open_calibration)
         self.advanced_btn.clicked.connect(self._advanced)
         self._tick = QTimer(self); self._tick.setInterval(1000); self._tick.timeout.connect(self._countdown_step)
+        if self._os is not None:
+            self._os.want_photos.connect(self._os_take_photos)
+            self._os.busy_changed.connect(self._os_busy)
+            self._os.rated.connect(self._os_rated)
 
     def _apply_styles(self) -> None:
         self.setStyleSheet(STYLESHEET_MAIN)
@@ -250,7 +267,17 @@ class CaptureWindow(QMainWindow):
             from src.van_scan import van_from_computer
             van = van_from_computer() if use_db else ""
         self.van_edit.setText(van)
-        if self._add_to is not None:
+        if self._os is not None:
+            self.setWindowTitle(self.windowTitle() + "   -   Old School")
+            self.folder_title.setText("Site folder:")
+            self.folder_edit.setReadOnly(True); self.folder_edit.setPlaceholderText("Pick the folder for the Old School photos")
+            self.browse_btn.setText("Pick folder...")
+            for w in (self.grab_btn, self.countdown_btn, self.auto_btn, self.target_spin, self.every_label,
+                      self.every_spin, self.open_cal_btn, self.advanced_btn):
+                w.hide()
+            self._shortcut.setEnabled(False)          # no grab key: Save image is the only way
+            QTimer.singleShot(0, self._os_begin)
+        elif self._add_to is not None:
             self.folder_title.setText("Adding to:")
             self.folder_edit.setText(str(self._add_to)); self.folder_edit.setReadOnly(True)
             self.browse_btn.setEnabled(False)
@@ -275,6 +302,8 @@ class CaptureWindow(QMainWindow):
     def _refresh_cameras(self) -> None:
         van = self.van_edit.text().strip().upper()
         key = (van, self.use_db.isChecked())
+        if self._os is not None and self._os.busy:
+            return                     # Old School: never change the camera during a position
         if self._closing or key == self._listed_for:
             return                     # e.g. focus leaving the van box on close: nothing changed
         self._listed_for = key
@@ -519,6 +548,8 @@ class CaptureWindow(QMainWindow):
                 self._session = self._add_to
                 self._start_log()
             return True
+        if self._os is not None:
+            return self._session is not None and self._os.busy      # the position folder
         folder = self.folder_edit.text().strip()
         if not folder:
             self._browse()
@@ -573,6 +604,8 @@ class CaptureWindow(QMainWindow):
         a, self._auto = self._auto, None
         if a is not None:
             a.stop()
+            if self._os is not None:
+                self._os.photos_done(list(self._os_paths))     # done, stopped or the camera went
         self.auto_label.hide()
         self._auto_button_text()
         if msg:
@@ -590,6 +623,14 @@ class CaptureWindow(QMainWindow):
         if self._auto is None:
             return
         from src.capture.autograb import SAY
+        if self._os is not None:
+            if what == "done":
+                self._stop_auto(f"Saved {n} photos in {self._session.name}.", "green")
+                self.auto_label.hide()
+            else:
+                self._auto_says(f"PHOTO  {n} / {target}" if what == "saved" else f"NO PICTURE   {n} / {target}",
+                                "rgb(60,220,60)" if what == "saved" else "rgb(230,180,40)")
+            return
         if what == "done":
             self._stop_auto(f"Done: {n} photos. Press Open in calibration app to grade them.", "green")
             self._auto_says(f"DONE  {n} / {target}", "rgb(60,220,60)")
@@ -613,6 +654,8 @@ class CaptureWindow(QMainWindow):
     def _saved(self, path: str, w: int, h: int, countdown: bool, thumb) -> None:
         if self._log is not None:
             self._log.add(Path(path), w, h, countdown)
+        if self._os is not None:
+            self._os_paths.append(path)
         self._count += 1
         self.count_label.setText(f"{self._count} photo{'s' if self._count != 1 else ''}")
         self._create_thumbnail_widget(thumb, Path(path).name)
@@ -663,6 +706,10 @@ class CaptureWindow(QMainWindow):
 
     # ── folder, calibration app, advanced ────────────────────────────────────
     def _browse(self) -> None:
+        if self._os is not None:
+            if self._os.site is None:
+                self._os_begin()
+            return
         d = QFileDialog.getExistingDirectory(self, "Folder for the photos", self.folder_edit.text())
         if d:
             self.folder_edit.setText(d)
@@ -709,6 +756,9 @@ class CaptureWindow(QMainWindow):
         self.target_spin.setEnabled(not auto); self.every_spin.setEnabled(not auto)
         self.try_btn.setEnabled(self._cam is not None and self._cam.supported)
         self.open_cal_btn.setEnabled(bool(self.folder_edit.text().strip()))
+        if self._os is not None:
+            self.browse_btn.setEnabled(self._os.site is None)
+            self._os.set_camera(self.camera_name(), self.serial(), ready and not auto)
 
     def _say(self, text: str, colour: str = "") -> None:
         c = {"green": "rgb(60,200,60)", "amber": "rgb(230,180,40)", "red": "rgb(255,107,107)"}.get(colour, "rgb(200,200,200)")
@@ -722,8 +772,79 @@ class CaptureWindow(QMainWindow):
         if self.auto_label.isVisible():
             self.auto_label.setGeometry(0, 0, self.preview.width(), 90)
 
+    # ── Old School (Phase 8) ─────────────────────────────────────────────────
+    def _ask_root(self) -> str:
+        """The root folder for this Old School collection.  (Tests replace this.)"""
+        last = str(QSettings(ORG, APP).value("old_school_root", "") or "")
+        return QFileDialog.getExistingDirectory(self, "Folder for the Old School photos", last)
+
+    def _os_begin(self) -> None:
+        """Root folder -> ExtrinsicAran<XX>_<date time> -> start the POS logger in it."""
+        if self._os is None or self._os.site is not None or self._closing:
+            return
+        root = self._os_root or self._ask_root()
+        if not root:
+            self._say("Pick the folder for the Old School photos (Pick folder...).", "amber"); return
+        from src.capture.oldschool import site_folder_name
+        site = Path(root) / site_folder_name(self.van_edit.text().strip())
+        try:
+            site.mkdir(parents=True)
+        except OSError as exc:
+            self._say(f"Could not make a folder in {root}: {exc}", "red"); return
+        if not self._os_root:
+            QSettings(ORG, APP).setValue("old_school_root", root)
+        self.folder_edit.setText(str(site))
+        self._os.start(site)
+        self._sync_buttons()
+
+    def _os_busy(self, busy: bool) -> None:
+        """While a position is collected the camera can't change."""
+        for w in (self.camera_combo, self.van_edit, self.use_db, self.try_btn, self.name_combo,
+                  self.serial_edit, self.size_combo):
+            w.setEnabled(not busy)
+        if not busy:
+            self._sync_buttons()
+
+    def _os_take_photos(self, folder, n: int, every: float) -> None:
+        self._session, self._log, self._os_paths = Path(folder), None, []
+        if not self._ready_to_grab() or self._auto is not None:
+            self._os.photos_done([]); return
+        self._start_log()
+        self._clear_thumbnails()
+        from src.capture.autograb import AutoGrabThread
+        self._auto = AutoGrabThread(self._worker, n, parent=self, every_s=every)
+        self._auto.state.connect(self._auto_state)
+        self._auto.want_save.connect(self._auto_save)
+        self._auto_says(f"PHOTO  0 / {n}", "white")
+        self._auto.start()
+        self._say(f"Taking {n} photos into {Path(folder).name}...", "")
+        self._sync_buttons()
+
+    def _os_rated(self, folder, data: dict) -> None:
+        if self._log is None or self._log.folder != Path(folder):
+            if self._cam is not None:
+                self._session = Path(folder); self._start_log()
+            else:                       # no photos and no camera: still keep the rating
+                self._log = CaptureLog(folder, self.van_edit.text().strip().upper(), data.get("camera", ""),
+                                       "", "", data.get("serial", ""), None, None, self.use_db.isChecked())
+        self._log.data["old_school"] = data
+        self._log.write()
+        self._session, self._log = None, None
+
+    def _ask_close(self) -> bool:
+        """A position is still logging: close anyway?  (Tests replace this.)"""
+        b = QMessageBox.question(self, "Position not finished",
+                                 "A position is still being logged. If you close now it will be NOT PASSED. Close?",
+                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                 QMessageBox.StandardButton.No)
+        return b == QMessageBox.StandardButton.Yes
+
     def closeEvent(self, e) -> None:
+        if self._os is not None and self._os.busy and not self._closing and not self._ask_close():
+            e.ignore(); return
         self._closing = True
+        if self._os is not None:
+            self._os.close_pos()
         self._tick.stop()
         self._stop_camera()
         if self._list_worker is not None:

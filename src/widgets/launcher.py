@@ -24,13 +24,16 @@ def capture_present(prog: str, args: list[str], cwd: str) -> bool:
     return Path(prog).exists()
 
 
-def capture_command(van: str, use_db: bool, camera: str = "", add_to: str = "") -> tuple[str, list[str], str]:
+def capture_command(van: str, use_db: bool, camera: str = "", add_to: str = "",
+                    old_school: bool = False) -> tuple[str, list[str], str]:
     """(program, arguments, working folder) that start SurveyorCapture as its own process.
     Installed: SurveyorCapture.exe beside this exe.  From source: python -m src.capture.
     add_to: the report's "Take 50 more" - Capture puts the new photos straight into that folder.
+    old_school: Old School collection (Capture asks for the root folder and starts the POS logger).
     Never imports src.capture (docs/capture: a capture-card hang must not freeze this app)."""
     args = ((["--van", van] if van else []) + ([] if use_db else ["--no-db"])
-            + (["--camera", camera] if camera else []) + (["--add-to", add_to] if add_to else []))
+            + (["--camera", camera] if camera else []) + (["--add-to", add_to] if add_to else [])
+            + (["--old-school"] if old_school else []))
     if getattr(sys, "frozen", False):
         exe = Path(sys.executable).with_name("SurveyorCapture.exe")
         return str(exe), args, str(exe.parent)
@@ -54,11 +57,13 @@ class Launcher(QObject):
             self.open_main(key)
         elif key == "capture":
             self.start_capture()
-        # "capture_os": not built yet (greyed out on the start screen)
+        elif key == "capture_os":
+            self.start_capture(old_school=True)
 
-    def start_capture(self) -> bool:
+    def start_capture(self, old_school: bool = False) -> bool:
         """SurveyorCapture in its own process; the start screen stays, for Calibrate lens after."""
-        prog, args, cwd = capture_command(self.start.van if self.start.database_on else "", self.start.database_on)
+        prog, args, cwd = capture_command(self.start.van if self.start.database_on else "", self.start.database_on,
+                                          old_school=old_school)
         if not capture_present(prog, args, cwd):
             where = str(Path(cwd) / "src" / "capture") if args[:1] == ["-m"] else prog
             QMessageBox.warning(self.start, "Collect lens photos",

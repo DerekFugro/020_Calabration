@@ -39,7 +39,7 @@ def test_start_screen_choices(app):
     from src.widgets.start_screen import StartScreen
     s = StartScreen()
     assert s.buttons["intrinsic"].isEnabled() and s.buttons["extrinsic"].isEnabled()
-    assert s.buttons["capture"].isEnabled() and not s.buttons["capture_os"].isEnabled()
+    assert s.buttons["capture"].isEnabled() and s.buttons["capture_os"].isEnabled()
     got = []
     s.chosen.connect(got.append)
     s.buttons["extrinsic"].click(); s.boards_btn.click()

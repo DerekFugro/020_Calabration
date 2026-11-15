@@ -167,7 +167,8 @@ straight into the tabs:
 - **Choices** (big buttons, plain words):
   1. **Collect lens photos** → starts SurveyorCapture (separate program).
   2. **Calibrate lens** → main window on Load Intrinsic.
-  3. **Collect Old School photos** → greyed out ("coming later") until Phase 8.
+  3. **Collect Old School photos** → SurveyorCapture in Old School mode (Phase 8,
+     `docs/capture/Capture_Phase.md`): POS light, Save image, 5-minute wait, rating.
   4. **Camera position** → main window on Load Extrinsic.
   5. Small link **Boards…** → main window on Boards.
 - Choices 2, 4 and 5 open the **same main window** (tabs Load Intrinsic, Load

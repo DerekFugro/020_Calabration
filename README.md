@@ -27,7 +27,7 @@ from another van). Choices:
 |---|---|
 | **Collect lens photos** | SurveyorCapture, as its own process (`--van`, `--no-db` when unticked) |
 | **Calibrate lens** | main window, Load Intrinsic |
-| Collect Old School photos | greyed out (later, Capture Phase 8) |
+| **Collect Old School photos** | SurveyorCapture in Old School mode (`--old-school`): asks for a root folder, makes `ExtrinsicAran<XX>_<date time>`, starts the POS logger (`E:\DP\POSProcessor`); per camera, **Save image** at each position = `<camera>\Position<N>` with 5 photos + 5 minutes of POS data, rated PASS / NOT PASSED. The Camera position step does not read these folders yet (Phase 8 task 4). |
 | **Camera position** | main window, Load Extrinsic |
 | Boards… | main window, Boards |
 
