@@ -195,7 +195,9 @@ class ExtrinsicScreen(QWidget):
         self._folder_cam = self._cs.camera
         self._camera_text()
         for s in self._cs.setups:
-            self.setups.addItem(f"{s.name}  {'(no van pose)' if s.van is None else ''}")
+            note = ("(left out: NOT PASSED)" if getattr(s, "left_out", "")
+                    else "(no van pose)" if s.van is None else "")
+            self.setups.addItem(f"{s.name}  {note}")
         self.refresh_lens()
         self._lens_checks()
         self.status.emit(f"{self._cs.camera}: {len(self._cs.setups)} setups.")
@@ -461,8 +463,13 @@ class ExtrinsicScreen(QWidget):
                      f"up {sr.solve.up_ground_m:.3f} m above the pavement.")
         if sr.setup.van:
             v = sr.setup.van
-            L.append(f"Van: heading {v.heading:.2f} (true), pitch {v.pitch:.2f}, roll {v.roll:.2f}, GPS {v.gps_status}, "
-                     f"moved {v.spread_deg:.2f} deg while parked.")
+            if getattr(v, "source", "aran") == "pos":
+                L.append(f"Van (POS logger, {v.rows} readings): heading {v.heading:.2f} (true), pitch {v.pitch:.2f}, "
+                         f"roll {v.roll:.2f}; roll / pitch moved {v.spread_deg:.2f} deg while parked, heading "
+                         f"wandered {v.heading_spread_deg:.2f} deg (5-minute average used).")
+            else:
+                L.append(f"Van: heading {v.heading:.2f} (true), pitch {v.pitch:.2f}, roll {v.roll:.2f}, GPS {v.gps_status}, "
+                         f"moved {v.spread_deg:.2f} deg while parked.")
         L += [f"  - {p}" for p in sr.problems]
         self.details.setPlainText("\n".join(L))
 

@@ -334,6 +334,14 @@ Not done yet: "no signal" before opening.
    (`setup_date` reads `YYYYMMDD` from the name today; `Position1` has none).
    Height is metres, ellipsoidal (ARAN CSVs were feet) — shown as raw only, as today.
    Pick the sharpest of the position's photos; skip positions rated NOT PASSED.
+   **Done 2026-11-15:** POS columns read (source "pos", height in metres); the photo is the
+   log's `best_photo`; the date from the log's `started`; Position2 sorts before Position10;
+   NOT PASSED positions are listed "(left out: NOT PASSED)" and never solved. For POS data
+   "moved while parked" is roll / pitch only; heading wander is shown and logged apart.
+   Real check: copies of the two ARAN59 ROW positions read correctly (15 000 rows each).
+   **Seen:** the 5-minute mean heading of the parked van was 68.61° at 17:10 and 68.06° at
+   17:28 (0.55° apart, same spot). The camera's pan from the solve moves with it [inference].
+   Not checked: a solve with real targets (no control site at ARAN59's parking lot).
    **Built 2026-11-15** (`oldschool.py` folder names + rating, `oldschool_panel.py`, window
    Old School mode). Real check on ARAN59 (ROW, POS app, one full 5-minute position): green in
    5 s; 5 photos 1920 x 1080 (sharpness ~770); 15 000 POS rows, green the whole time, RMS

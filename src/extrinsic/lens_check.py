@@ -39,7 +39,9 @@ def date_range_text(first, last) -> str:
 
 def setup_datetime(setup) -> datetime | None:
     """When an Old School setup photo was taken: from the folder name (20260404.102502),
-    else the photo's file time."""
+    else the photo's file time.  Capture's Position folders: the time in its log."""
+    if getattr(setup, "when", None) is not None:
+        return setup.when
     n = os.path.basename(getattr(setup, "folder", "") or getattr(setup, "name", ""))
     for fmt, k in (("%Y%m%d.%H%M%S", 15), ("%Y%m%d", 8)):
         try:

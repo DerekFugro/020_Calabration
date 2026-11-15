@@ -7,6 +7,14 @@
     *.gcp                  ignored: the site control file is used instead
 <camera>/PGExteriorCalibration*.RWC, PGInteriorCalibration*.RWC   old exe results (compare)
 
+SurveyorCapture's Old School mode (Phase 8, 2026-11-15) makes
+ExtrinsicAran<XX>_<date time>/<camera>/Position<N>/
+    <camera>_<time>.jpg x 5   the photo used is the sharpest (the log's best_photo)
+    NN_<camera>_Position<N>.csv   the POS logger's 5 minutes: lat_deg, lon_deg, height_m
+                           (ellipsoidal, METRES), roll_deg, pitch_deg, heading_deg ... used as
+                           they are (Derek); the date comes from the log, not the folder name
+    CAPTURE_*.json         Capture's log with the position's rating: NOT PASSED is left out
+
 Setups in folders named DO NOT USE, Bad, or with "(do not use)" are skipped.
 """
 
@@ -14,9 +22,11 @@ from __future__ import annotations
 
 import csv
 import glob
+import json
 import os
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 
 import numpy as np
 
@@ -37,6 +47,9 @@ class VanPose:
     gps_status: str
     rows: int
     spread_deg: float       # largest attitude spread while parked
+    source: str = "aran"    # "aran" (ReviewData / Processed csv) or "pos" (the POS logger's csv)
+    elevation_unit: str = "ft"   # ARAN csvs: feet; the POS logger: metres (ellipsoidal)
+    heading_spread_deg: float = 0.0   # heading wander while parked (logged only)
 
 
 @dataclass
@@ -48,6 +61,8 @@ class Setup:
     pose_csv: str = ""
     van: VanPose | None = None
     problems: list = field(default_factory=list)
+    when: datetime | None = None    # when the photo was taken (Capture's log); None = from the name
+    left_out: str = ""              # why the solve skips it (e.g. rated NOT PASSED when collected)
 
 
 @dataclass
@@ -67,14 +82,19 @@ def _first_col(header, name):
     return None
 
 
+# ARAN csv column -> the POS logger's column for the same value
+POS_COLS = {"Roll": "roll_deg", "Pitch": "pitch_deg", "Heading": "heading_deg", "Latitude": "lat_deg",
+            "Longitude": "lon_deg", "Elevation": "height_m", "GPS Status": "align_status"}
+
+
 def read_van_pose(path: str) -> VanPose | None:
     with open(path, newline="", encoding="utf-8", errors="ignore") as fh:
         rd = csv.reader(fh)
         hdr = next(rd, None)
         if not hdr:
             return None
-        cols = {k: _first_col(hdr, k) for k in ("Roll", "Pitch", "Heading", "Latitude", "Longitude",
-                                                  "Elevation", "GPS Status")}
+        pos = _first_col(hdr, "lat_deg") is not None and _first_col(hdr, "Latitude") is None
+        cols = {k: _first_col(hdr, POS_COLS[k] if pos else k) for k in POS_COLS}
         if any(cols[k] is None for k in ("Roll", "Pitch", "Heading", "Latitude", "Longitude")):
             return None
         vals, status = [], []
@@ -92,12 +112,38 @@ def read_van_pose(path: str) -> VanPose | None:
     hd = a[:, 2]
     hd_c = np.degrees(np.angle(np.mean(np.exp(1j * np.radians(hd)))))      # circular mean
     hd_dev = (hd - hd_c + 180) % 360 - 180
-    spread = float(max(np.ptp(a[:, 0]), np.ptp(a[:, 1]), np.ptp(hd_dev)))
+    # The POS heading wanders on a parked van (ARAN59 2026-11-15: 0.1-0.2 deg in 5 min while the
+    # position stayed within 2 cm): for POS data "moved" is roll / pitch only and the heading
+    # wander is kept apart (Derek: log it, never fail on it).  The 5-minute mean is used.
+    hd_spread = float(np.ptp(hd_dev))
+    tilt = float(max(np.ptp(a[:, 0]), np.ptp(a[:, 1])))
+    spread = tilt if pos else max(tilt, hd_spread)
     med = np.median(a, axis=0)
     st = max(set(status), key=status.count) if status else ""
     return VanPose(roll=float(med[0]), pitch=float(med[1]), heading=float(hd_c % 360),
                    lat=float(med[3]), lon=float(med[4]), elevation=float(med[5]),
-                   gps_status=st, rows=len(a), spread_deg=spread)
+                   gps_status=st, rows=len(a), spread_deg=spread,
+                   source="pos" if pos else "aran", elevation_unit="m" if pos else "ft",
+                   heading_spread_deg=hd_spread)
+
+
+def _capture_log(folder: str) -> dict:
+    """Capture's log in a Position folder (the newest one that has an old_school part), else {}."""
+    for p in sorted(glob.glob(os.path.join(folder, "CAPTURE_*.json")), reverse=True):
+        try:
+            with open(p, encoding="utf-8") as fh:
+                d = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if isinstance(d, dict) and isinstance(d.get("old_school"), dict):
+            return d
+    return {}
+
+
+def setup_key(name: str):
+    """Position2 before Position10; other names as they are."""
+    m = re.fullmatch(r"(?i)position(\d+)", name)
+    return (0, int(m.group(1)), "") if m else (1, 0, name)
 
 
 def _setup(folder: str) -> Setup:
@@ -105,6 +151,20 @@ def _setup(folder: str) -> Setup:
     jpg = sorted(glob.glob(os.path.join(folder, "*.jpg")) + glob.glob(os.path.join(folder, "*.jpeg")))
     bmp = sorted(glob.glob(os.path.join(folder, "*.bmp")))
     s.photo = (jpg or bmp or [""])[0]
+    log = _capture_log(folder)
+    if log:
+        osd = log["old_school"]
+        best = (osd.get("rating") or {}).get("best_photo") or ""
+        if best and os.path.isfile(os.path.join(folder, best)):
+            s.photo = os.path.join(folder, best)
+        try:
+            s.when = datetime.fromisoformat(str(log.get("started", "")))
+        except ValueError:
+            pass
+        rating = osd.get("rating") or {}
+        if rating.get("passed") is False:
+            why = "; ".join(rating.get("reasons") or []) or "no reason given"
+            s.left_out = f"rated NOT PASSED when collected ({why})"
     if s.photo:
         try:
             s.photo_id = int(os.path.splitext(os.path.basename(s.photo))[0])
@@ -147,5 +207,5 @@ def scan_old_school(root: str) -> list[CameraSetups]:
             out[cam_dir] = cs
         cs.setups.append(_setup(d))
     for cs in out.values():
-        cs.setups.sort(key=lambda s: s.name)
+        cs.setups.sort(key=lambda s: setup_key(s.name))
     return sorted(out.values(), key=lambda c: (c.camera, c.folder))

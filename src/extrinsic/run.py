@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 import yaml
 
+from src.extrinsic.oldschool import setup_key
 from src.extrinsic.solve import (in_van, pointing, rot_angle_deg, rot_mean, rot_zyx, setup_date,
                                  solve_setup)
 from src.extrinsic.targets import match_targets, predict_pose
@@ -132,6 +133,8 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
     for sr in todo:
         if sr.setup.problems:
             sr.problems += sr.setup.problems
+        if getattr(sr.setup, "left_out", ""):
+            sr.problems.append(f"left out: {sr.setup.left_out}")
     solved = []
 
     def place_on_van():
@@ -141,17 +144,17 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
                 np.mean([x.solve.lever_frd for x in solved], axis=0),
                 float(np.mean([x.solve.up_ground_m for x in solved])))
 
-    order = sorted(todo, key=lambda x: x.setup.name)
+    order = sorted(todo, key=lambda x: setup_key(x.setup.name))
 
     def attempt(sr):
         s = sr.setup
-        if s.van is None or not s.photo:
+        if s.van is None or not s.photo or getattr(s, "left_out", ""):
             return
         say(f"{cs.camera} {s.name}: finding targets…")
         img = cv2.imread(s.photo)
         if img is None:
             sr.problems.append("photo can't be read"); return
-        when = setup_date(s.name)
+        when = s.when.date() if getattr(s, "when", None) else setup_date(s.name)
         pv = place_on_van()
         if pv is not None:
             sr.seed = "other setups of this camera"
@@ -212,7 +215,7 @@ def run_camera(cs, site, K, D, seeds: dict | None = None, progress_cb=None) -> C
             tried_with[id(sr)] = len(solved)
             sr.problems, sr.match, sr.seed = list(sr.setup.problems), None, ""
             attempt(sr)
-    res.setups = sorted(todo, key=lambda x: x.setup.name)
+    res.setups = sorted(todo, key=lambda x: setup_key(x.setup.name))
     _combine(res, solved)
     return res
 
