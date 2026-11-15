@@ -125,11 +125,8 @@ def _window(app, tmp_path, monkeypatch, sharp=True, pos_args=()):
 
     monkeypatch.setattr(osc, "PHOTOS", 2)
     root = tmp_path / "root"; root.mkdir()
-    pos_factory = lambda: PosLink(argv=[sys.executable, FAKE, "--surveyor", "--out", "x", *pos_args],  # noqa: E731
-                                  cwd=str(tmp_path))
-    # the fake ignores --out's value for its files: give it the real one
-    orig = PosLink.start
-    monkeypatch.setattr(PosLink, "start", lambda self, out: (self._argv.__setitem__(4, out), orig(self, out))[1])
+    pos_factory = lambda: PosLink(argv=[sys.executable, FAKE, "--surveyor", "--out", "{out}", *pos_args],  # noqa: E731
+                                  cwd=str(tmp_path))                     # {out} = the site folder
     w = CaptureWindow(use_db=False, names=[PORT], source_factory=lambda cam, index: Source(camera="ROW"),
                       old_school=True, os_root=str(root), pos_factory=pos_factory)
     w._ask_close = lambda: True

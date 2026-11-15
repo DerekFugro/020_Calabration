@@ -158,7 +158,7 @@ class PosLink:
     # ---- start --------------------------------------------------------------------------
     def start(self, out: str) -> None:
         """Start the POS logger recording into `out` (it makes SurveyorPOS_<date time> there)."""
-        argv = self._argv or app_argv(self.app_dir, out)
+        argv = [a.replace("{out}", out) for a in self._argv] if self._argv else app_argv(self.app_dir, out)
         cwd = self._cwd or self.app_dir
         if not os.path.isfile(argv[0]) or not os.path.isdir(cwd):
             raise PosError(f"The POS logging app was not found ({self.app_dir}). {HELP}")
